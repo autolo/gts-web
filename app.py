@@ -1414,10 +1414,11 @@ def render_dimension_dots(score: float) -> str:
     return dots
 
 def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_name: str = ""):
-    """增强版概念股展示（Apple风格）"""
+    """概念股展示（简洁版 - 核心信息优先）"""
     stock_name = stock_info["stock_name"]
     stock_code = stock_info["stock_code"]
     confidence = stock_info.get("confidence", "low")
+    score = stock_info.get("score", 0)
     
     # 使用repo_name+stock_code作为唯一key，避免重复
     unique_key = f"{repo_name}_{stock_code}" if repo_name else stock_code
@@ -1430,77 +1431,52 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
     }
     conf = confidence_config.get(confidence, confidence_config["low"])
     
-    with st.container():
-        # 股票卡片包装
-        st.markdown('<div class="stock-card">', unsafe_allow_html=True)
+    # 核心信息行：股票名称 + 代码 + 置信度 | 股价 + 涨跌幅
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # 股票名称 + 代码（使用st.markdown的代码块语法）
+        st.markdown(f"**{conf['icon']} {stock_name}** `{stock_code}`")
+        st.caption(f"{conf['label']} | 评分 {score:.2f}")
+    
+    with col2:
+        # 实时股价
+        if stock_code and stock_code in stock_data_map:
+            data = stock_data_map[stock_code]
+            st.metric(
+                f"¥{data['price']:.2f}",
+                f"{data['change_percent']:+.2f}%",
+                delta_color="normal"
+            )
+        else:
+            st.metric("—", "暂无数据")
+    
+    # 详细信息折叠（点击查看）
+    with st.expander("📊 查看详情", expanded=False):
+        # 五维度评分（简化为一行显示）
+        dimensions = stock_info.get("dimensions", {})
+        dim_labels = {
+            "tech_relevance": "技术",
+            "business_match": "业务",
+            "industry_chain": "产业链",
+            "market_sentiment": "情绪",
+            "tech_barrier": "壁垒"
+        }
         
-        col1, col2 = st.columns([3, 1])
+        # 横向显示五维度
+        dim_cols = st.columns(5)
+        for idx, (dim_key, dim_label) in enumerate(dim_labels.items()):
+            value = dimensions.get(dim_key, 0)
+            progress = int(value * 100)
+            with dim_cols[idx]:
+                st.metric(dim_label, f"{progress}%")
         
-        with col1:
-            # 股票名称和代码
-            st.markdown(f"**{conf['icon']} {stock_name}** <span class='stock-code'>{stock_code}</span>")
-            
-            # 五维度评分进度条（优化样式）
-            dimensions = stock_info.get("dimensions", {})
-            
-            dim_labels = {
-                "tech_relevance": "技术相关性",
-                "business_match": "业务匹配",
-                "industry_chain": "产业链",
-                "market_sentiment": "市场情绪",
-                "tech_barrier": "技术壁垒"
-            }
-            
-            # 使用st.columns实现紧凑布局
-            dim_items = list(dim_labels.items())
-            for idx in range(0, len(dim_items), 2):
-                cols = st.columns([1, 2, 1, 2])
-                for col_idx, item_idx in enumerate([idx, idx+1]):
-                    if item_idx < len(dim_items):
-                        dim_key, dim_label = dim_items[item_idx]
-                        value = dimensions.get(dim_key, 0)
-                        progress = int(value * 100)
-                        
-                        with cols[col_idx * 2]:
-                            st.caption(f"{dim_label}", unsafe_allow_html=False)
-                        with cols[col_idx * 2 + 1]:
-                            # 使用st.progress（原生组件）
-                            st.progress(value, text=f"{progress}%")
-            
-            # 综合评分和验证统计
-            score = stock_info.get("score", 0)
-            verified_count = stock_info.get('verified_count', 0)
-            st.caption(f"📊 综合评分: **{score:.2f}** | 验证次数: {verified_count}")
-            
-            # 推荐理由（使用expander）
-            reasons = stock_info.get("reasons", [])
-            if reasons:
-                with st.expander("📋 推荐理由", expanded=False):
-                    for reason in reasons[:3]:
-                        st.markdown(f"- {reason}")
-        
-        with col2:
-            # 实时股价（垂直居中显示）
-            st.write("")
-            if stock_code and stock_code in stock_data_map:
-                data = stock_data_map[stock_code]
-                st.metric(
-                    f"¥{data['price']:.2f}",
-                    f"{data['change_percent']:+.2f}%",
-                    delta_color="normal"
-                )
-            else:
-                st.write("—")
-            
-            st.write("")
-            # 反馈按钮（缩小并紧凑排列）
-            btn_cols = st.columns(2)
-            with btn_cols[0]:
-                st.button("👍", key=f"adopt_{unique_key}", help="采纳")
-            with btn_cols[1]:
-                st.button("👎", key=f"ignore_{unique_key}", help="忽略")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+        # 推荐理由
+        reasons = stock_info.get("reasons", [])
+        if reasons:
+            st.markdown("**推荐理由：**")
+            for reason in reasons[:3]:
+                st.markdown(f"- {reason}")
 
 def display_stock_with_realtime_data(stock_info: Dict, stock_data_map: Dict):
     """显示股票信息（含实时数据）- 兼容旧版"""
