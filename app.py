@@ -10,6 +10,326 @@ import plotly.express as px
 import sqlite3
 import os
 
+# ============ Apple风格轻量级CSS ============
+def load_custom_css():
+    """加载自定义CSS样式（Apple风格，只调整配色和间距）"""
+    st.markdown("""
+    <style>
+    /* ===== 全局样式 ===== */
+    .stApp {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        background-color: #FAFAFA;
+    }
+    
+    /* ===== 标题样式优化 ===== */
+    h1 {
+        font-weight: 700 !important;
+        color: #1D1D1F !important;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-weight: 600 !important;
+        color: #1D1D1F !important;
+        margin-top: 24px !important;
+        margin-bottom: 12px !important;
+    }
+    
+    h3 {
+        font-weight: 600 !important;
+        color: #1D1D1F !important;
+    }
+    
+    /* ===== 链接颜色优化 ===== */
+    a {
+        color: #0071E3 !important;
+        text-decoration: none !important;
+    }
+    
+    a:hover {
+        text-decoration: underline !important;
+    }
+    
+    /* ===== 主按钮样式（Apple蓝） ===== */
+    .stButton > button[kind="primary"],
+    .stButton > button {
+        background-color: #0071E3 !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        padding: 10px 20px !important;
+        font-weight: 500 !important;
+        transition: background-color 0.2s ease !important;
+    }
+    
+    .stButton > button:hover {
+        background-color: #0077ED !important;
+    }
+    
+    /* ===== Metric卡片样式 ===== */
+    [data-testid="stMetric"] {
+        background-color: #FFFFFF;
+        padding: 16px 20px;
+        border-radius: 12px;
+        border: 1px solid #F5F5F7;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    
+    [data-testid="stMetricValue"] {
+        font-size: 26px !important;
+        font-weight: 700 !important;
+        color: #1D1D1F !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        font-size: 13px !important;
+        color: #86868B !important;
+        text-transform: none !important;
+    }
+    
+    [data-testid="stMetricDelta"] {
+        font-size: 12px !important;
+    }
+    
+    /* ===== Expander折叠面板样式 ===== */
+    .streamlit-expanderHeader {
+        background-color: #F5F5F7 !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        color: #1D1D1F !important;
+        border: none !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: #FFFFFF;
+        border-radius: 0 0 8px 8px !important;
+        border: 1px solid #F5F5F7;
+        border-top: none !important;
+    }
+    
+    /* ===== 分割线 ===== */
+    hr {
+        border: none !important;
+        height: 1px !important;
+        background-color: #F5F5F7 !important;
+        margin: 28px 0 !important;
+    }
+    
+    /* ===== 侧边栏优化 ===== */
+    section[data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 1px solid #F5F5F7;
+    }
+    
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        padding: 0 12px;
+    }
+    
+    /* ===== Selectbox下拉框样式 ===== */
+    .stSelectbox > div > div {
+        background-color: #FFFFFF;
+        border-radius: 8px;
+        border: 1px solid #F5F5F7;
+    }
+    
+    /* ===== Radio单选框样式 ===== */
+    .stRadio > div {
+        background-color: #FFFFFF;
+        border-radius: 8px;
+        padding: 8px;
+    }
+    
+    /* ===== 进度条样式优化 ===== */
+    .stProgress > div > div {
+        background-color: #F5F5F7;
+        height: 6px;
+        border-radius: 3px;
+    }
+    
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, #0071E3 0%, #5856D6 100%) !important;
+        border-radius: 3px;
+    }
+    
+    /* ===== 项目卡片增强样式 ===== */
+    .project-card {
+        background-color: #FFFFFF;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #F5F5F7;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    
+    .project-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1D1D1F;
+        border-left: 4px solid #0071E3;
+        padding-left: 12px;
+        margin-bottom: 8px;
+    }
+    
+    .project-description {
+        color: #86868B;
+        font-size: 14px;
+        margin-bottom: 12px;
+    }
+    
+    /* ===== 趋势标签样式 ===== */
+    .trend-p0 {
+        background-color: #FF3B30;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .trend-p1 {
+        background-color: #FF9500;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .trend-p2 {
+        background-color: #0071E3;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .trend-p3 {
+        background-color: #86868B;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    /* ===== 五维度评分圆点 ===== */
+    .dimension-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin: 0 2px;
+    }
+    
+    .dimension-dot.filled {
+        background-color: #0071E3;
+    }
+    
+    .dimension-dot.empty {
+        background-color: #E5E7EB;
+    }
+    
+    /* ===== 股票卡片样式 ===== */
+    .stock-card {
+        background-color: #F5F5F7;
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin: 8px 0;
+    }
+    
+    .stock-name {
+        font-weight: 600;
+        color: #1D1D1F;
+    }
+    
+    .stock-code {
+        background-color: #E5E7EB;
+        color: #86868B;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-family: monospace;
+    }
+    
+    /* ===== 置信度标签 ===== */
+    .confidence-high {
+        color: #34C759;
+        font-weight: 600;
+    }
+    
+    .confidence-medium {
+        color: #FF9500;
+        font-weight: 600;
+    }
+    
+    .confidence-low {
+        color: #FF3B30;
+        font-weight: 600;
+    }
+    
+    /* ===== Dataframe表格样式 ===== */
+    .dataframe {
+        border: none !important;
+    }
+    
+    .dataframe th {
+        background-color: #F5F5F7 !important;
+        color: #1D1D1F !important;
+        font-weight: 600 !important;
+    }
+    
+    .dataframe td {
+        border-bottom: 1px solid #F5F5F7 !important;
+    }
+    
+    /* ===== 底部提示文字 ===== */
+    .footer-tip {
+        text-align: center;
+        color: #86868B;
+        font-size: 13px;
+        padding: 16px;
+    }
+    
+    /* ===== 空数据提示 ===== */
+    .stAlert {
+        border-radius: 8px !important;
+    }
+    
+    /* ===== Slider滑块样式 ===== */
+    .stSlider > div > div > div {
+        background-color: #E5E7EB;
+    }
+    
+    /* ===== Checkbox复选框样式 ===== */
+    .stCheckbox > label {
+        color: #1D1D1F !important;
+    }
+    
+    /* ===== 调整streamlit原生元素间距 ===== */
+    .element-container {
+        margin-bottom: 8px !important;
+    }
+    
+    /* ===== 标签页样式 ===== */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        border-radius: 8px 8px 0 0;
+        padding: 8px 16px;
+        font-weight: 500;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #0071E3 !important;
+        color: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # 页面配置
 st.set_page_config(
     page_title="GitHub Trending Scout",
@@ -17,6 +337,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# 加载自定义CSS
+load_custom_css()
 
 # ============ 路径配置 ============
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1078,9 +1401,20 @@ def create_dimension_radar(dimensions: Dict) -> go.Figure:
     
     return fig
 
-# ============ UI展示组件 ============
+# ============ UI展示组件（Apple风格优化）============
+def render_dimension_dots(score: float) -> str:
+    """渲染五维度评分圆点"""
+    filled = int(score * 5)  # 5分制
+    dots = ""
+    for i in range(5):
+        if i < filled:
+            dots += '<span class="dimension-dot filled"></span>'
+        else:
+            dots += '<span class="dimension-dot empty"></span>'
+    return dots
+
 def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_name: str = ""):
-    """增强版概念股展示"""
+    """增强版概念股展示（Apple风格）"""
     stock_name = stock_info["stock_name"]
     stock_code = stock_info["stock_code"]
     confidence = stock_info.get("confidence", "low")
@@ -1088,21 +1422,25 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
     # 使用repo_name+stock_code作为唯一key，避免重复
     unique_key = f"{repo_name}_{stock_code}" if repo_name else stock_code
     
-    # 置信度图标和颜色
+    # 置信度配置
     confidence_config = {
-        "high": {"icon": "🟢", "color": "#22c55e", "label": "高置信"},
-        "medium": {"icon": "🟡", "color": "#eab308", "label": "中置信"},
-        "low": {"icon": "🔴", "color": "#ef4444", "label": "低置信"}
+        "high": {"icon": "🟢", "color": "#34C759", "label": "高置信"},
+        "medium": {"icon": "🟡", "color": "#FF9500", "label": "中置信"},
+        "low": {"icon": "🔴", "color": "#FF3B30", "label": "低置信"}
     }
     conf = confidence_config.get(confidence, confidence_config["low"])
     
     with st.container():
+        # 股票卡片包装
+        st.markdown('<div class="stock-card">', unsafe_allow_html=True)
+        
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            st.markdown(f"**{conf['icon']} {stock_name}** `{stock_code}`")
+            # 股票名称和代码
+            st.markdown(f"**{conf['icon']} {stock_name}** <span class='stock-code'>{stock_code}</span>")
             
-            # 五维度评分进度条
+            # 五维度评分进度条（优化样式）
             dimensions = stock_info.get("dimensions", {})
             
             dim_labels = {
@@ -1113,27 +1451,28 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
                 "tech_barrier": "技术壁垒"
             }
             
-            for dim_key, dim_label in dim_labels.items():
-                value = dimensions.get(dim_key, 0)
-                progress = int(value * 100)
-                
-                # 进度条
-                progress_bar = f"""
-                <div style="display: flex; align-items: center; margin: 2px 0;">
-                    <span style="width: 70px; font-size: 11px;">{dim_label}</span>
-                    <div style="flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; margin: 0 8px;">
-                        <div style="width: {progress}%; height: 100%; background: {conf['color']}; border-radius: 3px;"></div>
-                    </div>
-                    <span style="width: 35px; font-size: 11px; text-align: right;">{progress}%</span>
-                </div>
-                """
-                st.markdown(progress_bar, unsafe_allow_html=True)
+            # 使用st.columns实现紧凑布局
+            dim_items = list(dim_labels.items())
+            for idx in range(0, len(dim_items), 2):
+                cols = st.columns([1, 2, 1, 2])
+                for col_idx, item_idx in enumerate([idx, idx+1]):
+                    if item_idx < len(dim_items):
+                        dim_key, dim_label = dim_items[item_idx]
+                        value = dimensions.get(dim_key, 0)
+                        progress = int(value * 100)
+                        
+                        with cols[col_idx * 2]:
+                            st.caption(f"{dim_label}", unsafe_allow_html=False)
+                        with cols[col_idx * 2 + 1]:
+                            # 使用st.progress（原生组件）
+                            st.progress(value, text=f"{progress}%")
             
-            # 综合评分
+            # 综合评分和验证统计
             score = stock_info.get("score", 0)
-            st.caption(f"📊 综合评分: **{score:.2f}** | 验证次数: {stock_info.get('verified_count', 0)}")
+            verified_count = stock_info.get('verified_count', 0)
+            st.caption(f"📊 综合评分: **{score:.2f}** | 验证次数: {verified_count}")
             
-            # 推荐理由
+            # 推荐理由（使用expander）
             reasons = stock_info.get("reasons", [])
             if reasons:
                 with st.expander("📋 推荐理由", expanded=False):
@@ -1141,7 +1480,8 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
                         st.markdown(f"- {reason}")
         
         with col2:
-            # 实时股价
+            # 实时股价（垂直居中显示）
+            st.write("")
             if stock_code and stock_code in stock_data_map:
                 data = stock_data_map[stock_code]
                 st.metric(
@@ -1150,13 +1490,17 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
                     delta_color="normal"
                 )
             else:
-                st.write("-")
+                st.write("—")
             
-            # 反馈按钮
-            st.button("👍 采纳", key=f"adopt_{unique_key}")
-            st.button("👎 忽略", key=f"ignore_{unique_key}")
+            st.write("")
+            # 反馈按钮（缩小并紧凑排列）
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                st.button("👍", key=f"adopt_{unique_key}", help="采纳")
+            with btn_cols[1]:
+                st.button("👎", key=f"ignore_{unique_key}", help="忽略")
         
-        st.markdown("---")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 def display_stock_with_realtime_data(stock_info: Dict, stock_data_map: Dict):
     """显示股票信息（含实时数据）- 兼容旧版"""
@@ -1186,13 +1530,14 @@ def display_stock_with_realtime_data(stock_info: Dict, stock_data_map: Dict):
         if stock_info.get("reasons"):
             st.caption(stock_info["reasons"][0])
 
-# ============ 主界面 ============
+# ============ 主界面（Apple风格优化）============
 st.title("🔥 GitHub Trending Scout")
 st.markdown("**自动挖掘GitHub热门项目，智能识别技术趋势与投资机会**")
 
-# 侧边栏
+# 侧边栏（Apple风格）
 with st.sidebar:
     st.header("⚙️ 配置")
+    st.divider()
     
     language = st.selectbox(
         "编程语言",
@@ -1216,7 +1561,7 @@ with st.sidebar:
     
     limit = st.slider("项目数量", 5, 25, 10)
     
-    st.markdown("---")
+    st.divider()
     
     # 显示模式
     view_mode = st.radio(
@@ -1225,7 +1570,7 @@ with st.sidebar:
         index=0
     )
     
-    # 显示模式
+    # 分析模式
     display_mode = st.radio(
         "分析模式",
         ["增强版(产业链)", "经典版"],
@@ -1236,7 +1581,7 @@ with st.sidebar:
     # 股票数据显示开关
     show_stock_data = st.checkbox("显示股票实时数据", value=True)
     
-    st.markdown("---")
+    st.divider()
     st.markdown("### 📊 功能说明")
     st.markdown("""
     - 🔍 **热门项目发现**：实时获取GitHub Trending
@@ -1249,7 +1594,7 @@ with st.sidebar:
     - 📊 **Star趋势图**：近30天增长可视化
     """)
     
-    st.markdown("---")
+    st.divider()
     st.markdown("### 🏭 产业链覆盖")
     st.markdown("""
     - **AI**: 训练端/推理端/数据端/框架端
@@ -1258,7 +1603,7 @@ with st.sidebar:
     - **游戏**: 游戏引擎/服务/AI
     """)
     
-    st.markdown("---")
+    st.divider()
     st.markdown("Made with ❤️ by [Autolo](https://github.com/autolo)")
 
 def get_time_range(since: str) -> str:
@@ -1273,22 +1618,27 @@ def get_time_range(since: str) -> str:
         month_ago = today - timedelta(days=30)
         return f"{month_ago.strftime('%Y.%m.%d')}-{today.strftime('%Y.%m.%d')}"
 
-# 主内容区
+# 主内容区 - 数据概览（Apple风格统计卡片）
+st.markdown("## 📊 数据概览")
 col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+
 with col_stats1:
     time_map = {"daily": "今日", "weekly": "本周", "monthly": "本月"}
     time_range = get_time_range(since)
     st.metric("📅 数据周期", time_range)
+
 with col_stats2:
     st.metric("🔄 缓存时间", "5分钟")
+
 with col_stats3:
     lang_count = len([l for l in ["python", "javascript", "typescript", "rust", "go", "java", "c++", "swift", "c#"] if l == language or language == "all"])
     st.metric("🌐 编程语言", f"{lang_count}种" if language == "all" else language.title())
+
 with col_stats4:
     natural_lang_map = {"all": "全部", "chinese": "中文", "english": "英文", "japanese": "日文", "korean": "韩文"}
     st.metric("🌍 自然语言", natural_lang_map.get(natural_language, natural_language))
 
-st.markdown("---")
+st.divider()
 
 # 获取数据按钮
 if st.button("🚀 获取热门项目", type="primary", use_container_width=True):
@@ -1303,7 +1653,7 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
             else:
                 st.success(f"✅ 获取到 {len(projects)} 个热门项目（{time_map.get(since, since)}）")
             
-            # 统计信息
+            # 统计信息（Apple风格卡片）
             st.markdown("### 📊 数据统计")
             col1, col2, col3, col4, col5 = st.columns(5)
             
@@ -1317,17 +1667,17 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
             natural_lang_map = {"all": "全部", "chinese": "中文", "english": "英文", "japanese": "日文", "korean": "韩文"}
             
             with col1:
-                st.metric("总Stars", f"{total_stars:,}")
+                st.metric("⭐ 总Stars", f"{total_stars:,}")
             with col2:
-                st.metric(f"{time_map.get(since, '')}增长", f"+{total_stars_today:,}")
+                st.metric(f"📈 {time_map.get(since, '')}增长", f"+{total_stars_today:,}")
             with col3:
-                st.metric("热门语言", top_language)
+                st.metric("🖥️ 热门语言", top_language)
             with col4:
-                st.metric("P0/P1项目", p0_p1_count)
+                st.metric("🔥 P0/P1项目", p0_p1_count)
             with col5:
-                st.metric("自然语言", natural_lang_map.get(natural_language, natural_language))
+                st.metric("🌍 自然语言", natural_lang_map.get(natural_language, natural_language))
             
-            st.markdown("---")
+            st.divider()
             
             # 收集所有需要的股票代码
             all_stock_codes = set()
@@ -1379,83 +1729,87 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                     hide_index=True
                 )
             
-            # 卡片视图
+            # 卡片视图（Apple风格优化）
             else:
                 for i, repo in enumerate(projects, 1):
                     trend = analyze_trend_signal(repo)
                     difficulty = assess_difficulty(repo)
                     analysis = concept_analysis_results[i-1]
                     
-                    with st.container():
-                        col1, col2, col3 = st.columns([3, 1, 1])
+                    # 项目卡片包装
+                    st.markdown('<div class="project-card">', unsafe_allow_html=True)
+                    
+                    # 标题区域（带左边框强调）
+                    col_title, col_trend, col_difficulty = st.columns([4, 1, 1])
+                    
+                    with col_title:
+                        st.markdown(f"### {i}. [{repo['full_name']}]({repo['html_url']})")
+                        st.markdown(f"<span class='project-description'>{repo.get('description', '暂无描述')[:150]}...</span>", unsafe_allow_html=True)
+                    
+                    with col_trend:
+                        stars_today = repo.get("stars_today", 0)
+                        st.metric("📈 趋势", trend["level"], f"+{stars_today} ⭐")
+                    
+                    with col_difficulty:
+                        st.metric("🚀 难度", difficulty["stars"])
+                    
+                    # 项目元信息栏
+                    meta_cols = st.columns([2, 2, 2, 2, 2])
+                    with meta_cols[0]:
+                        if repo.get('language'):
+                            st.metric("🖥️ 语言", repo['language'][:8])
+                    with meta_cols[1]:
+                        st.metric("⭐ Stars", f"{repo['stargazers_count']:,}")
+                    with meta_cols[2]:
+                        st.metric("🍴 Forks", f"{repo['forks_count']:,}")
+                    with meta_cols[3]:
+                        st.metric("📈 今日+", f"+{repo.get('stars_today', 0):,}")
+                    with meta_cols[4]:
+                        # 趋势信号标签
+                        trend_colors = {"P0": "🔴", "P1": "🟠", "P2": "🔵", "P3": "⚪"}
+                        st.metric("🎯 信号", f"{trend_colors.get(trend['level'], '⚪')} {trend['level']}")
+                    
+                    # 概念股映射（使用expander优化）
+                    if analysis["stocks"]:
+                        st.markdown("#### 💰 概念股映射 (v4.0 产业链分析)")
                         
-                        with col1:
-                            st.markdown(f"### {i}. [{repo['full_name']}]({repo['html_url']})")
-                            st.markdown(f"📝 {repo.get('description', '暂无描述')[:150]}...")
-                        
-                        with col2:
-                            stars_today = repo.get("stars_today", 0)
-                            st.metric("趋势信号", trend["level_desc"], f"+{stars_today} stars")
-                        
-                        with col3:
-                            st.metric("部署难度", difficulty["stars"])
-                        
-                        # 概念股映射
-                        if analysis["stocks"]:
-                            st.markdown("#### 💰 概念股映射 (v4.0 产业链分析)")
-                            
-                            if display_mode == "增强版(产业链)":
-                                # 增强版展示
-                                for stock_info in analysis["stocks"][:3]:
-                                    render_concept_stocks_enhanced(stock_info, stock_data_map, repo['full_name'])
-                            else:
-                                # 经典版展示
-                                for stock_info in analysis["stocks"][:3]:
-                                    display_stock_with_realtime_data(stock_info, stock_data_map)
-                        
-                        # 匹配的产业链
-                        if analysis.get("matched_chains"):
-                            with st.expander("🏭 匹配的产业链", expanded=False):
-                                for chain in analysis["matched_chains"]:
-                                    st.markdown(f"- **{chain['domain']}** → {chain['node']}")
-                        
-                        # Star趋势图
-                        with st.expander("📈 查看Star趋势（近30天）", expanded=False):
-                            fig = create_star_trend_chart(
-                                repo.get("stars_today", 0),
-                                repo.get("stargazers_count", 0)
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                        
-                        # 详细信息行
-                        col1, col2, col3 = st.columns([2, 2, 1])
-                        
-                        with col1:
-                            tags = []
-                            if repo.get('language'):
-                                tags.append(f"🖥️ {repo['language']}")
-                            tags.append(f"⭐ {repo['stargazers_count']:,}")
-                            tags.append(f"🍴 {repo['forks_count']:,}")
-                            st.markdown(" | ".join(tags))
-                        
-                        with col2:
-                            if analysis["stocks"]:
-                                reasons = analysis["stocks"][0].get("reasons", [])
-                                if reasons:
-                                    st.caption(f"推荐理由: {reasons[0][:50]}...")
-                        
-                        with col3:
-                            for signal in trend["signals"][:2]:
-                                st.markdown(signal)
-                        
-                        st.markdown("---")
+                        if display_mode == "增强版(产业链)":
+                            # 增强版展示
+                            for stock_info in analysis["stocks"][:3]:
+                                render_concept_stocks_enhanced(stock_info, stock_data_map, repo['full_name'])
+                        else:
+                            # 经典版展示
+                            for stock_info in analysis["stocks"][:3]:
+                                display_stock_with_realtime_data(stock_info, stock_data_map)
+                    
+                    # 匹配的产业链（折叠展示）
+                    if analysis.get("matched_chains"):
+                        with st.expander("🏭 匹配的产业链", expanded=False):
+                            for chain in analysis["matched_chains"]:
+                                st.markdown(f"- **{chain['domain']}** → {chain['node']}")
+                    
+                    # Star趋势图（折叠展示）
+                    with st.expander("📈 查看Star趋势（近30天）", expanded=False):
+                        fig = create_star_trend_chart(
+                            repo.get("stars_today", 0),
+                            repo.get("stargazers_count", 0)
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 推荐理由摘要
+                    if analysis["stocks"] and analysis["stocks"][0].get("reasons"):
+                        reasons = analysis["stocks"][0].get("reasons", [])
+                        st.caption(f"💡 推荐理由: {reasons[0][:80]}...")
+                    
+                    # 项目卡片结束
+                    st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.error("获取数据失败，请稍后重试")
 
-# 底部信息
-st.markdown("---")
+# 底部信息（Apple风格）
+st.divider()
 st.markdown("""
-<div style='text-align: center; color: #94A3B8;'>
+<div class='footer-tip'>
     💡 <b>提示</b>：点击项目名称可跳转到GitHub页面 | 
     数据来源：GitHub Trending API | 
     概念股映射基于产业链知识图谱+五维度评分，仅供参考，不构成投资建议 |
