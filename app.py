@@ -351,6 +351,50 @@ def assess_difficulty(repo: Dict) -> Dict:
         "factors": factors
     }
 
+# 自然语言检测
+def detect_natural_language(text: str) -> str:
+    """检测文本的自然语言"""
+    if not text:
+        return "unknown"
+    
+    # 简单的字符范围检测
+    chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    japanese_chars = sum(1 for c in text if '\u3040' <= c <= '\u30ff')
+    korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
+    
+    total_chars = len(text)
+    if total_chars == 0:
+        return "unknown"
+    
+    # 计算各语言字符占比
+    chinese_ratio = chinese_chars / total_chars
+    japanese_ratio = japanese_chars / total_chars
+    korean_ratio = korean_chars / total_chars
+    
+    # 判断主要语言
+    if chinese_ratio > 0.05:
+        return "chinese"
+    elif japanese_ratio > 0.05:
+        return "japanese"
+    elif korean_ratio > 0.05:
+        return "korean"
+    else:
+        return "english"
+
+def filter_by_natural_language(projects: List[Dict], natural_language: str) -> List[Dict]:
+    """按自然语言筛选项目"""
+    if natural_language == "all":
+        return projects
+    
+    filtered = []
+    for project in projects:
+        description = project.get("description", "")
+        detected = detect_natural_language(description)
+        if detected == natural_language:
+            filtered.append(project)
+    
+    return filtered
+
 def create_star_trend_chart(stars_today: int, total_stars: int) -> go.Figure:
     """创建star趋势图"""
     import random
@@ -413,6 +457,13 @@ with st.sidebar:
         index=0
     )
     
+    natural_language = st.selectbox(
+        "自然语言",
+        ["all", "chinese", "english", "japanese", "korean"],
+        index=0,
+        help="按项目描述的自然语言筛选（基于检测算法）"
+    )
+    
     since = st.selectbox(
         "时间范围",
         ["daily", "weekly", "monthly"],
@@ -458,7 +509,7 @@ def get_time_range(since: str) -> str:
         return f"{month_ago.strftime('%Y.%m.%d')}-{today.strftime('%Y.%m.%d')}"
 
 # 主内容区 - 时间范围指标（移到顶部）
-col_stats1, col_stats2, col_stats3 = st.columns(3)
+col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
 with col_stats1:
     time_map = {"daily": "今日", "weekly": "本周", "monthly": "本月"}
     time_range = get_time_range(since)
@@ -467,7 +518,10 @@ with col_stats2:
     st.metric("🔄 缓存时间", "5分钟")
 with col_stats3:
     lang_count = len([l for l in ["python", "javascript", "typescript", "rust", "go", "java", "c++", "swift", "c#"] if l == language or language == "all"])
-    st.metric("🌐 支持语言", f"{lang_count}种" if language == "all" else language.title())
+    st.metric("🌐 编程语言", f"{lang_count}种" if language == "all" else language.title())
+with col_stats4:
+    natural_lang_map = {"all": "全部", "chinese": "中文", "english": "英文", "japanese": "日文", "korean": "韩文"}
+    st.metric("🌍 自然语言", natural_lang_map.get(natural_language, natural_language))
 
 st.markdown("---")
 
@@ -477,11 +531,17 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
         projects = fetch_github_trending(language, since, limit)
         
         if projects:
-            st.success(f"✅ 获取到 {len(projects)} 个热门项目（{time_map.get(since, since)}）")
+            # 应用自然语言筛选
+            projects = filter_by_natural_language(projects, natural_language)
+            
+            if not projects:
+                st.warning(f"⚠️ 没有找到符合条件的{natural_language}项目，请尝试调整筛选条件")
+            else:
+                st.success(f"✅ 获取到 {len(projects)} 个热门项目（{time_map.get(since, since)}）")
             
             # 统计信息（移到项目列表之前 - 置顶）
             st.markdown("### 📊 数据统计")
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             
             total_stars = sum(p.get("stargazers_count", 0) for p in projects)
             avg_stars = total_stars // len(projects) if projects else 0
@@ -489,6 +549,8 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
             languages = [p.get("language", "Unknown") for p in projects if p.get("language")]
             top_language = max(set(languages), key=languages.count) if languages else "Unknown"
             p0_p1_count = sum(1 for p in projects if analyze_trend_signal(p)["level"] in ["P0", "P1"])
+            
+            natural_lang_map = {"all": "全部", "chinese": "中文", "english": "英文", "japanese": "日文", "korean": "韩文"}
             
             with col1:
                 st.metric("总Stars", f"{total_stars:,}")
@@ -498,6 +560,8 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                 st.metric("热门语言", top_language)
             with col4:
                 st.metric("P0/P1项目", p0_p1_count)
+            with col5:
+                st.metric("自然语言", natural_lang_map.get(natural_language, natural_language))
             
             st.markdown("---")
             
