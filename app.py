@@ -1488,7 +1488,7 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
             margin=dict(l=20, r=20, t=20, b=20)
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key=f"radar_{unique_key}")
         
         # 推荐理由
         reasons = stock_info.get("reasons", [])
@@ -1786,7 +1786,7 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                             repo.get("stars_today", 0),
                             repo.get("stargazers_count", 0)
                         )
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, key=f"star_trend_{repo['full_name']}")
                     
                     # 项目分隔
                     st.divider()
