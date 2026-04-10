@@ -2,13 +2,13 @@
 
 > 自动挖掘 GitHub 热门项目，智能识别技术趋势与投资机会
 
-[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gts-web.streamlit.app)
+[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gts-web-64edgatdhmkkd5uk6cbmno.streamlit.app)
 
 ## 🎯 项目简介
 
 GitHub Trending Scout 的 Web 版本，让你在浏览器中轻松发现热门项目，识别技术趋势和概念股投资机会。
 
-**在线体验**：[点击开始使用](https://gts-web.streamlit.app)
+**在线体验**：[点击开始使用](https://gts-web-64edgatdhmkkd5uk6cbmno.streamlit.app)
 
 ## ✨ 特性
 
