@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Tuple
 import re
 import plotly.graph_objects as go
 import plotly.express as px
+import sqlite3
+import os
 
 # 页面配置
 st.set_page_config(
@@ -16,6 +18,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ============ 路径配置 ============
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(APP_DIR, "data", "mapping.db")
+
 # ============ 股票数据API ============
 @st.cache_data(ttl=300)  # 5分钟缓存
 def get_stock_realtime_data(stock_codes: List[str]) -> Dict[str, Dict]:
@@ -23,8 +29,6 @@ def get_stock_realtime_data(stock_codes: List[str]) -> Dict[str, Dict]:
     result = {}
     
     try:
-        # 新浪财经API（免费，无需token）
-        # 格式：股票代码需要带市场前缀（sh/sz）
         codes_str = ",".join([f"{'sh' if code.startswith('6') else 'sz'}{code}" 
                              for code in stock_codes if code.isdigit()])
         
@@ -44,7 +48,6 @@ def get_stock_realtime_data(stock_codes: List[str]) -> Dict[str, Dict]:
             lines = response.text.strip().split('\n')
             for line in lines:
                 if '=' in line and '"' in line:
-                    # 解析格式：var hq_str_sh600519="贵州茅台,1800.00,1790.00,..."
                     code_match = re.search(r'hq_str_(?:sh|sz)(\d+)', line)
                     data_match = re.search(r'"(.+)"', line)
                     
@@ -65,7 +68,7 @@ def get_stock_realtime_data(stock_codes: List[str]) -> Dict[str, Dict]:
     
     return result
 
-# 股票代码映射表（常见A股）
+# 股票代码映射表
 STOCK_CODE_MAP = {
     "东方财富": "300059",
     "同花顺": "300033",
@@ -82,263 +85,642 @@ STOCK_CODE_MAP = {
     "用友网络": "600588",
     "金山办公": "688111",
     "金证股份": "600446",
+    "云从科技": "688327",
 }
 
-# ============ 概念股映射系统（增强版）============
+# ============ 概念股映射系统 v4.0（产业链知识图谱+动态学习）============
 class ConceptStockAnalyzer:
-    """概念股分析器 - 多维度动态映射"""
+    """概念股分析器 v4.0 - 产业链知识图谱+五维度动态评分"""
     
-    # 维度1：编程语言映射
-    LANGUAGE_STOCK_MAP = {
-        "Python": {
-            "stocks": [
-                {"name": "东方财富", "reason": "金融科技、量化交易", "strength": "strong"},
-                {"name": "同花顺", "reason": "数据科学、金融分析", "strength": "strong"},
-                {"name": "恒生电子", "reason": "金融系统开发", "strength": "medium"},
-            ],
-            "base_weight": 0.3
-        },
-        "JavaScript": {
-            "stocks": [
-                {"name": "科大讯飞", "reason": "前端AI应用开发", "strength": "medium"},
-                {"name": "寒武纪", "reason": "Web端AI推理", "strength": "weak"},
-                {"name": "海光信息", "reason": "前端工具链", "strength": "weak"},
-            ],
-            "base_weight": 0.25
-        },
-        "TypeScript": {
-            "stocks": [
-                {"name": "科大讯飞", "reason": "企业级AI应用", "strength": "medium"},
-                {"name": "用友网络", "reason": "企业管理软件", "strength": "strong"},
-                {"name": "金山办公", "reason": "办公软件开发", "strength": "strong"},
-            ],
-            "base_weight": 0.25
-        },
-        "Rust": {
-            "stocks": [
-                {"name": "中科曙光", "reason": "高性能计算、系统开发", "strength": "strong"},
-                {"name": "浪潮信息", "reason": "国产化替代、基础设施", "strength": "strong"},
-                {"name": "紫光股份", "reason": "网络设备、系统软件", "strength": "medium"},
-            ],
-            "base_weight": 0.35
-        },
-        "Go": {
-            "stocks": [
-                {"name": "中科曙光", "reason": "云原生基础设施", "strength": "strong"},
-                {"name": "浪潮信息", "reason": "微服务架构、容器化", "strength": "strong"},
-                {"name": "紫光股份", "reason": "云计算平台", "strength": "medium"},
-            ],
-            "base_weight": 0.3
-        },
-        "Java": {
-            "stocks": [
-                {"name": "东方财富", "reason": "金融交易系统", "strength": "strong"},
-                {"name": "恒生电子", "reason": "金融核心系统", "strength": "strong"},
-                {"name": "金证股份", "reason": "证券交易系统", "strength": "strong"},
-            ],
-            "base_weight": 0.35
-        },
-        "C++": {
-            "stocks": [
-                {"name": "中科曙光", "reason": "高性能计算、AI推理", "strength": "strong"},
-                {"name": "浪潮信息", "reason": "底层系统开发", "strength": "medium"},
-                {"name": "寒武纪", "reason": "AI芯片底层", "strength": "strong"},
-            ],
-            "base_weight": 0.35
-        },
-        "Swift": {
-            "stocks": [
-                {"name": "立讯精密", "reason": "iOS生态供应链", "strength": "strong"},
-                {"name": "歌尔股份", "reason": "Apple生态", "strength": "strong"},
-                {"name": "蓝思科技", "reason": "iOS设备制造", "strength": "medium"},
-            ],
-            "base_weight": 0.3
-        },
-        "C#": {
-            "stocks": [
-                {"name": "科大讯飞", "reason": "企业AI应用", "strength": "medium"},
-                {"name": "用友网络", "reason": "企业软件开发", "strength": "strong"},
-                {"name": "金山办公", "reason": "办公软件", "strength": "strong"},
-            ],
-            "base_weight": 0.25
-        }
+    # 五维度权重配置
+    DIMENSION_WEIGHTS = {
+        "tech_relevance": 0.30,      # 技术相关性 30%
+        "business_match": 0.25,      # 业务匹配度 25%
+        "industry_chain": 0.20,      # 产业链位置 20%
+        "market_sentiment": 0.15,    # 市场情绪 15%
+        "tech_barrier": 0.10        # 技术壁垒 10%
     }
     
-    # 维度2：技术领域映射（基于关键词）
-    DOMAIN_STOCK_MAP = {
-        "ai": {
-            "keywords": ["ai", "artificial intelligence", "machine learning", "deep learning", "neural network"],
-            "stocks": [
-                {"name": "科大讯飞", "reason": "AI语音、NLP", "strength": "strong"},
-                {"name": "寒武纪", "reason": "AI芯片", "strength": "strong"},
-                {"name": "海光信息", "reason": "AI算力芯片", "strength": "strong"},
-            ],
-            "weight": 0.5
-        },
-        "llm": {
-            "keywords": ["llm", "large language model", "gpt", "transformer", "chatbot"],
-            "stocks": [
-                {"name": "科大讯飞", "reason": "大模型研发", "strength": "strong"},
-                {"name": "寒武纪", "reason": "大模型推理芯片", "strength": "strong"},
-                {"name": "中科曙光", "reason": "算力基础设施", "strength": "medium"},
-            ],
-            "weight": 0.5
-        },
-        "blockchain": {
-            "keywords": ["blockchain", "crypto", "web3", "defi", "nft"],
-            "stocks": [
-                {"name": "恒生电子", "reason": "区块链金融应用", "strength": "medium"},
-                {"name": "东方财富", "reason": "数字资产平台", "strength": "medium"},
-            ],
-            "weight": 0.4
-        },
-        "fintech": {
-            "keywords": ["fintech", "finance", "trading", "quantitative", "algorithmic trading"],
-            "stocks": [
-                {"name": "东方财富", "reason": "互联网金融平台", "strength": "strong"},
-                {"name": "同花顺", "reason": "金融数据分析", "strength": "strong"},
-                {"name": "恒生电子", "reason": "金融系统", "strength": "strong"},
-            ],
-            "weight": 0.45
-        },
-        "cloud": {
-            "keywords": ["cloud", "kubernetes", "docker", "microservice", "serverless"],
-            "stocks": [
-                {"name": "中科曙光", "reason": "云计算基础设施", "strength": "strong"},
-                {"name": "浪潮信息", "reason": "云服务器", "strength": "strong"},
-                {"name": "紫光股份", "reason": "云网络", "strength": "medium"},
-            ],
-            "weight": 0.4
-        },
-        "game": {
-            "keywords": ["game", "gaming", "game engine", "unity", "unreal"],
-            "stocks": [
-                {"name": "中科曙光", "reason": "游戏服务器", "strength": "medium"},
-                {"name": "寒武纪", "reason": "游戏AI、渲染", "strength": "medium"},
-            ],
-            "weight": 0.3
-        },
+    # 置信度阈值
+    CONFIDENCE_THRESHOLDS = {
+        "high": 0.70,
+        "medium": 0.45,
+        "low": 0.0
     }
     
-    # 维度3：具体技术栈映射
-    TECH_STACK_MAP = {
-        "pytorch": {"name": "寒武纪", "reason": "AI训练框架", "strength": "strong", "weight": 0.4},
-        "tensorflow": {"name": "海光信息", "reason": "AI推理框架", "strength": "medium", "weight": 0.35},
-        "react": {"name": "用友网络", "reason": "前端框架", "strength": "weak", "weight": 0.2},
-        "vue": {"name": "用友网络", "reason": "前端框架", "strength": "weak", "weight": 0.2},
-        "kubernetes": {"name": "中科曙光", "reason": "容器编排", "strength": "strong", "weight": 0.35},
-        "redis": {"name": "东方财富", "reason": "高速缓存", "strength": "medium", "weight": 0.25},
-        "kafka": {"name": "东方财富", "reason": "消息队列", "strength": "medium", "weight": 0.25},
-        "ethereum": {"name": "恒生电子", "reason": "智能合约平台", "strength": "medium", "weight": 0.3},
-    }
+    # 产业链知识图谱（内存缓存）
+    _industry_chains = None
+    _mapping_rules = None
+    _db_initialized = False
     
     @classmethod
-    def analyze(cls, repo: Dict) -> Dict:
-        """综合分析项目的概念股映射"""
-        language = repo.get("language", "Unknown")
+    def _get_db_connection(cls):
+        """获取数据库连接"""
+        if not os.path.exists(DB_PATH):
+            cls._init_database()
+        return sqlite3.connect(DB_PATH)
+    
+    @classmethod
+    def _init_database(cls):
+        """初始化数据库"""
+        global DB_PATH
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # 创建表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mapping_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type VARCHAR(50) NOT NULL,
+                source_value VARCHAR(100) NOT NULL,
+                target_stock VARCHAR(50) NOT NULL,
+                target_code VARCHAR(10) NOT NULL,
+                weight DECIMAL(3,2) DEFAULT 0.5,
+                confidence DECIMAL(3,2) DEFAULT 0.5,
+                reason TEXT,
+                verified_count INTEGER DEFAULT 0,
+                success_count INTEGER DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(source_type, source_value, target_stock)
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS industry_chain (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain VARCHAR(50) NOT NULL,
+                chain_node VARCHAR(100) NOT NULL,
+                keywords TEXT NOT NULL,
+                stocks TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(domain, chain_node)
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS validation_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_name VARCHAR(200) NOT NULL,
+                stock_name VARCHAR(50) NOT NULL,
+                stock_code VARCHAR(10),
+                recommend_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                recommend_score DECIMAL(3,2),
+                price_on_recommend DECIMAL(10,2),
+                price_after_7d DECIMAL(10,2),
+                user_feedback VARCHAR(20) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        cls._db_initialized = True
+    
+    @classmethod
+    def _load_industry_chains(cls) -> Dict:
+        """从数据库加载产业链知识图谱"""
+        if cls._industry_chains is not None:
+            return cls._industry_chains
+        
+        try:
+            conn = cls._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT domain, chain_node, keywords, stocks FROM industry_chain")
+            rows = cursor.fetchall()
+            conn.close()
+            
+            chains = {}
+            for row in rows:
+                domain, chain_node, keywords_json, stocks_json = row
+                if domain not in chains:
+                    chains[domain] = []
+                chains[domain].append({
+                    "node": chain_node,
+                    "keywords": json.loads(keywords_json),
+                    "stocks": json.loads(stocks_json)
+                })
+            
+            cls._industry_chains = chains
+            return chains
+        except Exception as e:
+            st.warning(f"加载产业链知识图谱失败: {e}")
+            return cls._get_default_chains()
+    
+    @classmethod
+    def _load_mapping_rules(cls) -> List[Dict]:
+        """从数据库加载映射规则"""
+        if cls._mapping_rules is not None:
+            return cls._mapping_rules
+        
+        try:
+            conn = cls._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT source_type, source_value, target_stock, target_code, 
+                       weight, confidence, reason, verified_count, success_count
+                FROM mapping_rules
+            """)
+            rows = cursor.fetchall()
+            conn.close()
+            
+            rules = []
+            for row in rows:
+                rules.append({
+                    "source_type": row[0],
+                    "source_value": row[1],
+                    "target_stock": row[2],
+                    "target_code": row[3],
+                    "weight": float(row[4]),
+                    "confidence": float(row[5]),
+                    "reason": row[6],
+                    "verified_count": row[7],
+                    "success_count": row[8]
+                })
+            
+            cls._mapping_rules = rules
+            return rules
+        except Exception as e:
+            st.warning(f"加载映射规则失败: {e}")
+            return []
+    
+    @classmethod
+    def _get_default_chains(cls) -> Dict:
+        """获取默认产业链（数据库加载失败时使用）"""
+        return {
+            "AI": [
+                {
+                    "node": "AI.训练端",
+                    "keywords": ["training", "model training", "deep learning training", "pytorch training", 
+                                "distributed training", "fine-tuning", "pre-training", "mlops"],
+                    "stocks": [
+                        {"name": "寒武纪", "code": "688256", "role": "训练芯片", "market_share": "20%", "strength": "strong"},
+                        {"name": "海光信息", "code": "688041", "role": "训练芯片", "market_share": "15%", "strength": "medium"},
+                        {"name": "中科曙光", "code": "603019", "role": "AI服务器", "market_share": "25%", "strength": "strong"}
+                    ]
+                },
+                {
+                    "node": "AI.推理端",
+                    "keywords": ["inference", "model serving", "onnx", "tensorrt", "triton", "deployment",
+                                "model optimization", "quantization", "openvino", "llm inference", 
+                                "chatbot", "rag", "langchain", "semantic kernel"],
+                    "stocks": [
+                        {"name": "寒武纪", "code": "688256", "role": "推理芯片", "market_share": "25%", "strength": "strong"},
+                        {"name": "海光信息", "code": "688041", "role": "推理芯片", "market_share": "18%", "strength": "medium"},
+                        {"name": "科大讯飞", "code": "002230", "role": "AI应用", "market_share": "35%", "strength": "strong"}
+                    ]
+                }
+            ],
+            "云计算": [
+                {
+                    "node": "云计算.基础设施",
+                    "keywords": ["cloud computing", "iaas", "server", "data center", "virtualization",
+                                "kvm", "vmware", "hypervisor", "bare metal", "gpu cloud", "vpc"],
+                    "stocks": [
+                        {"name": "中科曙光", "code": "603019", "role": "服务器", "market_share": "25%", "strength": "strong"},
+                        {"name": "浪潮信息", "code": "000977", "role": "服务器", "market_share": "30%", "strength": "strong"}
+                    ]
+                },
+                {
+                    "node": "云计算.平台层",
+                    "keywords": ["kubernetes", "docker", "container", "containerization", "helm",
+                                "istio", "service mesh", "devops", "ci/cd", "microservice"],
+                    "stocks": [
+                        {"name": "中科曙光", "code": "603019", "role": "容器平台", "strength": "strong"},
+                        {"name": "浪潮信息", "code": "000977", "role": "云原生", "strength": "medium"}
+                    ]
+                }
+            ],
+            "金融": [
+                {
+                    "node": "金融.交易系统",
+                    "keywords": ["trading", "exchange", "stock market", "cryptocurrency exchange",
+                                "trading bot", "algorithmic trading", "quantitative trading"],
+                    "stocks": [
+                        {"name": "东方财富", "code": "300059", "role": "互联网券商", "strength": "strong"},
+                        {"name": "同花顺", "code": "300033", "role": "行情交易", "strength": "strong"},
+                        {"name": "恒生电子", "code": "600570", "role": "交易系统", "strength": "strong"}
+                    ]
+                }
+            ],
+            "游戏": [
+                {
+                    "node": "游戏.游戏引擎",
+                    "keywords": ["game engine", "unity", "unreal", "godot", "game development",
+                                "3d engine", "rendering engine", "shader", "game asset"],
+                    "stocks": [
+                        {"name": "中科曙光", "code": "603019", "role": "渲染计算", "strength": "medium"}
+                    ]
+                },
+                {
+                    "node": "游戏.游戏服务",
+                    "keywords": ["game server", "multiplayer", "online game", "game backend",
+                                "matchmaking", "game analytics", "photon", "nakama"],
+                    "stocks": [
+                        {"name": "中科曙光", "code": "603019", "role": "游戏云", "strength": "strong"},
+                        {"name": "浪潮信息", "code": "000977", "role": "游戏服务器", "strength": "medium"}
+                    ]
+                }
+            ]
+        }
+    
+    @classmethod
+    def _match_industry_chain(cls, text: str) -> List[Dict]:
+        """匹配产业链环节"""
+        text_lower = text.lower()
+        matched_chains = []
+        
+        chains = cls._load_industry_chains()
+        
+        for domain, domain_chains in chains.items():
+            for chain in domain_chains:
+                for keyword in chain["keywords"]:
+                    if keyword.lower() in text_lower:
+                        matched_chains.append({
+                            "domain": domain,
+                            "node": chain["node"],
+                            "stocks": chain["stocks"],
+                            "matched_keyword": keyword
+                        })
+                        break
+        
+        return matched_chains
+    
+    @classmethod
+    def _calculate_tech_relevance(cls, repo: Dict, stock: str, matched_chains: List[Dict]) -> float:
+        """计算技术相关性得分 (30%)"""
+        score = 0.0
+        language = repo.get("language", "")
         description = repo.get("description", "").lower()
         name = repo.get("full_name", "").lower()
         
-        # 存储所有维度的映射结果
-        stock_scores = {}  # {股票名: {score: 分数, reasons: [], strengths: []}}
+        rules = cls._load_mapping_rules()
         
-        # 维度1：编程语言映射
-        if language in cls.LANGUAGE_STOCK_MAP:
-            lang_map = cls.LANGUAGE_STOCK_MAP[language]
-            for stock_info in lang_map["stocks"]:
-                stock_name = stock_info["name"]
-                strength_weight = {"strong": 1.0, "medium": 0.6, "weak": 0.3}[stock_info["strength"]]
-                score = lang_map["base_weight"] * strength_weight
-                
-                if stock_name not in stock_scores:
-                    stock_scores[stock_name] = {"score": 0, "reasons": [], "strengths": [], "dimensions": []}
-                
-                stock_scores[stock_name]["score"] += score
-                stock_scores[stock_name]["reasons"].append(f"[语言] {stock_info['reason']}")
-                stock_scores[stock_name]["strengths"].append(stock_info["strength"])
-                stock_scores[stock_name]["dimensions"].append("编程语言")
+        # 检查语言匹配
+        for rule in rules:
+            if rule["source_type"] == "language" and rule["source_value"].lower() == language.lower():
+                if rule["target_stock"] == stock:
+                    score += rule["weight"] * 0.4
         
-        # 维度2：技术领域映射（基于描述关键词）
-        for domain, domain_info in cls.DOMAIN_STOCK_MAP.items():
-            keywords = domain_info["keywords"]
-            if any(kw in description or kw in name for kw in keywords):
-                for stock_info in domain_info["stocks"]:
-                    stock_name = stock_info["name"]
-                    strength_weight = {"strong": 1.0, "medium": 0.6, "weak": 0.3}[stock_info["strength"]]
-                    score = domain_info["weight"] * strength_weight
+        # 检查技术栈匹配
+        for rule in rules:
+            if rule["source_type"] == "tech_stack":
+                if rule["source_value"].lower() in description or rule["source_value"].lower() in name:
+                    if rule["target_stock"] == stock:
+                        score += rule["weight"] * 0.4
+        
+        # 产业链加成
+        for chain in matched_chains:
+            for s in chain["stocks"]:
+                if s["name"] == stock:
+                    strength_weight = {"strong": 1.0, "medium": 0.6, "weak": 0.3}.get(s["strength"], 0.3)
+                    score += 0.3 * strength_weight
+                    break
+        
+        return min(score, 1.0)
+    
+    @classmethod
+    def _calculate_business_match(cls, repo: Dict, stock: str) -> float:
+        """计算业务匹配度得分 (25%)"""
+        score = 0.0
+        description = repo.get("description", "").lower()
+        name = repo.get("full_name", "").lower()
+        
+        # 根据股票业务领域匹配
+        business_keywords = {
+            "东方财富": ["finance", "trading", "stock", "market", "invest", "quant", "financial", "金融"],
+            "同花顺": ["stock", "market", "trading", "analysis", "行情", "交易"],
+            "恒生电子": ["trading", "exchange", "banking", "fintech", "交易", "金融系统"],
+            "科大讯飞": ["ai", "nlp", "voice", "speech", "language model", "语音", "nlp", "大模型"],
+            "寒武纪": ["ai", "chip", "inference", "training", "ml", "deep learning", "ai芯片", "推理"],
+            "海光信息": ["gpu", "ai", "chip", "computing", "ai芯片", "算力"],
+            "中科曙光": ["cloud", "server", "hpc", "computing", "data center", "云计算", "服务器"],
+            "浪潮信息": ["server", "cloud", "ai", "enterprise", "服务器", "云计算"],
+            "用友网络": ["enterprise", "saas", "business", "management", "erp", "企业", "管理"],
+            "金山办公": ["office", "document", "collaboration", "办公", "文档", "协作"],
+            "金证股份": ["securities", "trading", "exchange", "证券", "交易"],
+            "云从科技": ["ai", "face", "recognition", "computer vision", "人脸", "视觉"],
+        }
+        
+        keywords = business_keywords.get(stock, [])
+        for kw in keywords:
+            if kw.lower() in description or kw.lower() in name:
+                score += 0.25
+        
+        return min(score, 1.0)
+    
+    @classmethod
+    def _calculate_industry_chain_score(cls, matched_chains: List[Dict], stock: str) -> float:
+        """计算产业链位置得分 (20%)"""
+        if not matched_chains:
+            return 0.0
+        
+        score = 0.0
+        for chain in matched_chains:
+            for s in chain["stocks"]:
+                if s["name"] == stock:
+                    strength_weight = {"strong": 1.0, "medium": 0.6, "weak": 0.3}.get(s["strength"], 0.3)
+                    market_share = 0.0
+                    if "market_share" in s:
+                        try:
+                            market_share = float(s["market_share"].replace("%", "")) / 100
+                        except:
+                            market_share = 0.0
                     
-                    if stock_name not in stock_scores:
-                        stock_scores[stock_name] = {"score": 0, "reasons": [], "strengths": [], "dimensions": []}
-                    
-                    stock_scores[stock_name]["score"] += score
-                    stock_scores[stock_name]["reasons"].append(f"[领域-{domain}] {stock_info['reason']}")
-                    stock_scores[stock_name]["strengths"].append(stock_info["strength"])
-                    stock_scores[stock_name]["dimensions"].append(f"技术领域({domain})")
+                    # 产业链得分 = 强度权重 * 市场份额加成
+                    score += strength_weight * (0.5 + market_share * 0.5)
+                    break
         
-        # 维度3：具体技术栈映射
-        for tech, tech_info in cls.TECH_STACK_MAP.items():
-            if tech in description or tech in name:
-                stock_name = tech_info["name"]
-                strength_weight = {"strong": 1.0, "medium": 0.6, "weak": 0.3}[tech_info["strength"]]
-                score = tech_info["weight"] * strength_weight
-                
+        return min(score, 1.0)
+    
+    @classmethod
+    def _calculate_market_sentiment(cls, repo: Dict) -> float:
+        """计算市场情绪得分 (15%) - 基于项目热度"""
+        stars = repo.get("stargazers_count", 0)
+        stars_today = repo.get("stars_today", 0)
+        forks = repo.get("forks_count", 0)
+        
+        score = 0.0
+        
+        # 今日增长信号（权重较高）
+        if stars_today > 500:
+            score += 0.5
+        elif stars_today > 100:
+            score += 0.3
+        elif stars_today > 50:
+            score += 0.15
+        
+        # 总星标规模
+        if stars > 50000:
+            score += 0.3
+        elif stars > 10000:
+            score += 0.2
+        elif stars > 1000:
+            score += 0.1
+        
+        # Fork活跃度
+        if forks > 1000:
+            score += 0.2
+        elif forks > 100:
+            score += 0.1
+        
+        return min(score, 1.0)
+    
+    @classmethod
+    def _calculate_tech_barrier(cls, repo: Dict) -> float:
+        """计算技术壁垒得分 (10%)"""
+        description = repo.get("description", "").lower()
+        name = repo.get("full_name", "").lower()
+        language = repo.get("language", "")
+        
+        score = 0.0
+        
+        # 高壁垒语言
+        high_barrier_langs = ["Rust", "C++", "Go"]
+        if language in high_barrier_langs:
+            score += 0.3
+        
+        # 技术难度关键词
+        barrier_keywords = [
+            "compiler", "runtime", "kernel", "driver", "hardware", "embedded",
+            "gpu", "cuda", "cuda", "fpga", "asic", "chip",
+            "distributed", "consensus", "raft", "paxos",
+            "security", "cryptography", "encryption",
+            "ml", "ai", "neural", "deep learning"
+        ]
+        
+        for kw in barrier_keywords:
+            if kw in description or kw in name:
+                score += 0.1
+        
+        return min(score, 1.0)
+    
+    @classmethod
+    def _get_confidence(cls, final_score: float, dimensions: Dict) -> str:
+        """计算置信度标签"""
+        # 多维度验证：如果多个维度都得分较高，置信度提升
+        high_dim_count = sum(1 for v in dimensions.values() if v >= 0.5)
+        
+        if final_score >= 0.7 and high_dim_count >= 3:
+            return "high"
+        elif final_score >= 0.45 and high_dim_count >= 2:
+            return "medium"
+        else:
+            return "low"
+    
+    @classmethod
+    def _get_verification_stats(cls, stock_name: str) -> Tuple[int, float]:
+        """获取股票的验证统计数据"""
+        try:
+            conn = cls._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*), 
+                       CASE WHEN COUNT(*) > 0 
+                            THEN CAST(SUM(CASE WHEN user_feedback = 'adopted' THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) 
+                            ELSE 0 
+                       END
+                FROM validation_records 
+                WHERE stock_name = ?
+            """, (stock_name,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                return row[0], row[1] if row[1] else 0.0
+            return 0, 0.0
+        except:
+            return 0, 0.0
+    
+    @classmethod
+    def _record_recommendation(cls, repo: Dict, recommendations: List[Dict]):
+        """记录推荐结果（为后续验证准备）"""
+        try:
+            conn = cls._get_db_connection()
+            cursor = conn.cursor()
+            
+            for rec in recommendations:
+                cursor.execute("""
+                    INSERT INTO validation_records 
+                    (repo_name, stock_name, stock_code, recommend_score)
+                    VALUES (?, ?, ?, ?)
+                """, (
+                    repo.get("full_name", ""),
+                    rec["stock_name"],
+                    rec["stock_code"],
+                    rec["score"]
+                ))
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            st.warning(f"记录推荐结果失败: {e}")
+    
+    @classmethod
+    def analyze(cls, repo: Dict) -> Dict:
+        """综合分析项目的概念股映射 - 五维度评分"""
+        
+        # 1. 匹配产业链环节
+        combined_text = f"{repo.get('description', '')} {repo.get('full_name', '')} {repo.get('language', '')}"
+        matched_chains = cls._match_industry_chain(combined_text)
+        
+        # 2. 收集所有可能的股票
+        stock_scores = {}
+        
+        # 从映射规则收集
+        rules = cls._load_mapping_rules()
+        for rule in rules:
+            stock_name = rule["target_stock"]
+            if stock_name not in stock_scores:
+                stock_scores[stock_name] = {
+                    "score": 0.0,
+                    "reasons": [],
+                    "dimensions": {
+                        "tech_relevance": 0.0,
+                        "business_match": 0.0,
+                        "industry_chain": 0.0,
+                        "market_sentiment": 0.0,
+                        "tech_barrier": 0.0
+                    },
+                    "matched_rules": []
+                }
+            
+            # 记录匹配原因
+            if rule["source_type"] == "language" and rule["source_value"].lower() == repo.get("language", "").lower():
+                stock_scores[stock_name]["reasons"].append(f"[语言-{rule['source_value']}] {rule['reason']}")
+                stock_scores[stock_name]["matched_rules"].append(rule)
+            elif rule["source_type"] == "tech_stack":
+                desc = combined_text.lower()
+                if rule["source_value"].lower() in desc:
+                    stock_scores[stock_name]["reasons"].append(f"[技术栈-{rule['source_value']}] {rule['reason']}")
+                    stock_scores[stock_name]["matched_rules"].append(rule)
+        
+        # 从产业链收集
+        for chain in matched_chains:
+            for s in chain["stocks"]:
+                stock_name = s["name"]
                 if stock_name not in stock_scores:
-                    stock_scores[stock_name] = {"score": 0, "reasons": [], "strengths": [], "dimensions": []}
+                    stock_scores[stock_name] = {
+                        "score": 0.0,
+                        "reasons": [],
+                        "dimensions": {
+                            "tech_relevance": 0.0,
+                            "business_match": 0.0,
+                            "industry_chain": 0.0,
+                            "market_sentiment": 0.0,
+                            "tech_barrier": 0.0
+                        },
+                        "matched_rules": []
+                    }
                 
-                stock_scores[stock_name]["score"] += score
-                stock_scores[stock_name]["reasons"].append(f"[技术-{tech}] {tech_info['reason']}")
-                stock_scores[stock_name]["strengths"].append(tech_info["strength"])
-                stock_scores[stock_name]["dimensions"].append(f"技术栈({tech})")
+                strength_weight = {"strong": 1.0, "medium": 0.6, "weak": 0.3}.get(s["strength"], 0.3)
+                market_info = f"，市场份额{s.get('market_share', '')}" if s.get("market_share") else ""
+                stock_scores[stock_name]["reasons"].append(
+                    f"[产业链-{chain['domain']}.{chain['node']}] {s['role']}{market_info}"
+                )
         
-        # 排序并计算综合强度
+        # 3. 计算五维度得分
+        for stock_name, data in stock_scores.items():
+            # 技术相关性
+            data["dimensions"]["tech_relevance"] = cls._calculate_tech_relevance(repo, stock_name, matched_chains)
+            
+            # 业务匹配度
+            data["dimensions"]["business_match"] = cls._calculate_business_match(repo, stock_name)
+            
+            # 产业链位置
+            data["dimensions"]["industry_chain"] = cls._calculate_industry_chain_score(matched_chains, stock_name)
+            
+            # 市场情绪（对所有股票相同，基于项目热度）
+            data["dimensions"]["market_sentiment"] = cls._calculate_market_sentiment(repo)
+            
+            # 技术壁垒
+            data["dimensions"]["tech_barrier"] = cls._calculate_tech_barrier(repo)
+            
+            # 综合得分
+            data["score"] = (
+                data["dimensions"]["tech_relevance"] * cls.DIMENSION_WEIGHTS["tech_relevance"] +
+                data["dimensions"]["business_match"] * cls.DIMENSION_WEIGHTS["business_match"] +
+                data["dimensions"]["industry_chain"] * cls.DIMENSION_WEIGHTS["industry_chain"] +
+                data["dimensions"]["market_sentiment"] * cls.DIMENSION_WEIGHTS["market_sentiment"] +
+                data["dimensions"]["tech_barrier"] * cls.DIMENSION_WEIGHTS["tech_barrier"]
+            )
+            
+            # 置信度
+            data["confidence"] = cls._get_confidence(data["score"], data["dimensions"])
+            
+            # 验证数据
+            data["verified_count"], data["success_rate"] = cls._get_verification_stats(stock_name)
+        
+        # 4. 排序并取前5
         sorted_stocks = sorted(stock_scores.items(), key=lambda x: x[1]["score"], reverse=True)
         
         result = []
-        for stock_name, info in sorted_stocks[:5]:  # 取前5个
-            # 计算综合强度
-            strong_count = info["strengths"].count("strong")
-            medium_count = info["strengths"].count("medium")
-            
-            if strong_count >= 2 or (strong_count >= 1 and info["score"] >= 0.5):
-                strength = "strong"
-                strength_icon = "🔴"
-            elif strong_count >= 1 or medium_count >= 2 or info["score"] >= 0.3:
-                strength = "medium"
-                strength_icon = "🟡"
-            else:
-                strength = "weak"
-                strength_icon = "🟢"
-            
+        for stock_name, data in sorted_stocks[:5]:
             result.append({
-                "name": stock_name,
-                "code": STOCK_CODE_MAP.get(stock_name, ""),
-                "score": round(info["score"], 2),
-                "strength": strength,
-                "strength_icon": strength_icon,
-                "reasons": info["reasons"],
-                "dimensions": list(set(info["dimensions"]))
+                "stock_name": stock_name,
+                "stock_code": STOCK_CODE_MAP.get(stock_name, ""),
+                "score": round(data["score"], 2),
+                "confidence": data["confidence"],
+                "reasons": list(set(data["reasons"]))[:5],  # 去重，最多5条
+                "dimensions": {k: round(v, 2) for k, v in data["dimensions"].items()},
+                "verified_count": data["verified_count"],
+                "success_rate": data["success_rate"]
             })
+        
+        # 5. 记录推荐（异步，不阻塞返回）
+        if result:
+            cls._record_recommendation(repo, result)
         
         return {
             "stocks": result,
-            "analysis_depth": len(sorted_stocks),
-            "primary_dimension": result[0]["dimensions"][0] if result else "Unknown"
+            "matched_chains": [{"domain": c["domain"], "node": c["node"]} for c in matched_chains],
+            "analysis_depth": len(sorted_stocks)
         }
 
-# 缓存配置
-@st.cache_data(ttl=300)  # 5分钟缓存
-def fetch_github_trending(language: str, since: str, limit: int) -> List[Dict]:
-    """获取GitHub热门项目 - 使用第三方Trending API"""
-    try:
-        # 使用可靠的第三方API: https://githubtrending.lessx.xyz
-        base_url = "https://githubtrending.lessx.xyz/trending"
+# 保留旧的兼容方法
+class ConceptStockAnalyzerCompat(ConceptStockAnalyzer):
+    """兼容旧接口的包装类"""
+    
+    @classmethod
+    def analyze(cls, repo: Dict) -> Dict:
+        """兼容旧接口的分析方法"""
+        result = super().analyze(repo)
         
+        # 转换为旧格式
+        old_format_stocks = []
+        confidence_icon_map = {"high": "🟢", "medium": "🟡", "low": "🔴"}
+        strength_map = {"high": "strong", "medium": "medium", "low": "weak"}
+        
+        for stock in result["stocks"]:
+            old_format_stocks.append({
+                "name": stock["stock_name"],
+                "code": stock["stock_code"],
+                "score": stock["score"],
+                "strength": strength_map.get(stock["confidence"], "weak"),
+                "strength_icon": confidence_icon_map.get(stock["confidence"], "🔴"),
+                "reasons": stock["reasons"],
+                "dimensions": ["产业链分析", "技术栈匹配"]
+            })
+        
+        return {
+            "stocks": old_format_stocks,
+            "analysis_depth": result["analysis_depth"],
+            "primary_dimension": result["matched_chains"][0]["node"] if result["matched_chains"] else "Unknown"
+        }
+
+# ============ 缓存配置 ============
+@st.cache_data(ttl=300)
+def fetch_github_trending(language: str, since: str, limit: int) -> List[Dict]:
+    """获取GitHub热门项目"""
+    try:
+        base_url = "https://githubtrending.lessx.xyz/trending"
         params = {}
         
         if language != "all":
             params["language"] = language
         
-        # since参数: daily, weekly, monthly
         if since in ["daily", "weekly", "monthly"]:
             params["since"] = since
         
@@ -352,14 +734,11 @@ def fetch_github_trending(language: str, since: str, limit: int) -> List[Dict]:
         data = response.json()
         
         if data and isinstance(data, list):
-            # 标准化数据格式
             normalized = []
             for repo in data[:limit]:
-                # 解析"361 stars today"格式
                 increased_text = repo.get("increased", "")
                 stars_today = parse_stars_today(increased_text)
                 
-                # 解析项目名
                 name = repo.get("name", "")
                 if "/" in name:
                     parts = name.split("/")
@@ -388,41 +767,28 @@ def fetch_github_trending(language: str, since: str, limit: int) -> List[Dict]:
         st.warning(f"主要API调用失败: {str(e)}，尝试备用方案...")
         return get_fallback_data(language, limit)
 
-@st.cache_data(ttl=3600)  # 1小时缓存
+@st.cache_data(ttl=3600)
 def fetch_star_history(owner: str, repo: str) -> Optional[List[Dict]]:
     """获取项目近30天的star历史数据"""
     try:
-        # 使用GitHub API获取star历史
-        # 注意：GitHub API不直接提供历史数据，需要使用第三方服务或估算
-        # 这里使用简化的方案：基于当前数据和趋势估算
-        
         url = f"https://api.github.com/repos/{owner}/{repo}/stargazers"
         headers = {
             "Accept": "application/vnd.github.v3+json",
             "User-Agent": "GitHub-Trending-Scout"
         }
         
-        # 获取最近的star数据（最后一页）
-        params = {
-            "per_page": 100,
-            "page": 1
-        }
-        
+        params = {"per_page": 100, "page": 1}
         response = requests.get(url, headers=headers, params=params, timeout=10)
         
         if response.status_code == 200:
-            # 成功获取，生成模拟历史数据
-            # 实际应用中应该使用真实的star历史API
             return generate_estimated_history()
         else:
             return None
-            
     except Exception:
-        # 返回模拟数据用于演示
         return generate_estimated_history()
 
 def generate_estimated_history() -> List[Dict]:
-    """生成估算的历史趋势数据（用于演示）"""
+    """生成估算的历史趋势数据"""
     import random
     base_date = datetime.now()
     history = []
@@ -430,7 +796,6 @@ def generate_estimated_history() -> List[Dict]:
     
     for i in range(30, 0, -1):
         date = base_date - timedelta(days=i)
-        # 模拟增长趋势
         growth = random.randint(5, 50)
         base_stars += growth
         history.append({
@@ -444,8 +809,6 @@ def parse_stars_today(text: str) -> int:
     """解析'361 stars today'格式"""
     if not text:
         return 0
-    
-    # 匹配数字
     match = re.search(r'(\d+)', text.replace(",", ""))
     if match:
         return int(match.group(1))
@@ -516,18 +879,16 @@ def get_fallback_data(language: str, limit: int) -> List[Dict]:
     
     return fallback_projects[:limit]
 
-# 趋势信号分析
+# ============ 趋势信号分析 ============
 def analyze_trend_signal(repo: Dict) -> Dict:
     """分析项目趋势信号"""
     stars = repo.get("stargazers_count", 0)
     stars_today = repo.get("stars_today", 0)
     forks = repo.get("forks_count", 0)
     
-    # 计算信号强度
     signal_score = 0
     signals = []
     
-    # 今日Star增长信号（更重要）
     if stars_today > 500:
         signal_score += 3
         signals.append(f"🔥 今日暴涨（+{stars_today} stars）")
@@ -538,7 +899,6 @@ def analyze_trend_signal(repo: Dict) -> Dict:
         signal_score += 1
         signals.append(f"📈 持续增长（+{stars_today} stars）")
     
-    # 总Star规模
     if stars > 50000:
         signal_score += 2
         signals.append("🏆 明星项目（50K+ stars）")
@@ -546,12 +906,10 @@ def analyze_trend_signal(repo: Dict) -> Dict:
         signal_score += 1
         signals.append("⭐ 成熟项目（10K+ stars）")
     
-    # Fork活跃度
     if forks > 1000:
         signal_score += 1
         signals.append("💪 高度活跃（1K+ forks）")
     
-    # 信号等级
     if signal_score >= 6:
         level = "P0"
         level_desc = "🔥 紧急关注"
@@ -573,31 +931,21 @@ def analyze_trend_signal(repo: Dict) -> Dict:
         "stars_today": stars_today
     }
 
-# 部署难度评估
+# ============ 部署难度评估 ============
 def assess_difficulty(repo: Dict) -> Dict:
     """评估部署难度"""
     language = repo.get("language", "Unknown")
     description = repo.get("description", "").lower()
     
-    difficulty = 1  # 1-5星
+    difficulty = 1
     factors = []
     
-    # 语言难度
     lang_difficulty = {
-        "Python": 1,
-        "JavaScript": 1,
-        "TypeScript": 2,
-        "Go": 2,
-        "Rust": 4,
-        "C++": 4,
-        "Java": 2,
-        "Swift": 3,
-        "C#": 2,
-        "Unknown": 2
+        "Python": 1, "JavaScript": 1, "TypeScript": 2, "Go": 2, "Rust": 4,
+        "C++": 4, "Java": 2, "Swift": 3, "C#": 2, "Unknown": 2
     }
     difficulty = lang_difficulty.get(language, 2)
     
-    # 检查关键词
     if "docker" in description or "kubernetes" in description:
         factors.append("🐳 容器化部署")
     if "api" in description or "server" in description:
@@ -616,13 +964,12 @@ def assess_difficulty(repo: Dict) -> Dict:
         "factors": factors
     }
 
-# 自然语言检测
+# ============ 自然语言检测 ============
 def detect_natural_language(text: str) -> str:
     """检测文本的自然语言"""
     if not text:
         return "unknown"
     
-    # 简单的字符范围检测
     chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
     japanese_chars = sum(1 for c in text if '\u3040' <= c <= '\u30ff')
     korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
@@ -631,12 +978,10 @@ def detect_natural_language(text: str) -> str:
     if total_chars == 0:
         return "unknown"
     
-    # 计算各语言字符占比
     chinese_ratio = chinese_chars / total_chars
     japanese_ratio = japanese_chars / total_chars
     korean_ratio = korean_chars / total_chars
     
-    # 判断主要语言
     if chinese_ratio > 0.05:
         return "chinese"
     elif japanese_ratio > 0.05:
@@ -660,69 +1005,169 @@ def filter_by_natural_language(projects: List[Dict], natural_language: str) -> L
     
     return filtered
 
+# ============ 可视化组件 ============
 def create_star_trend_chart(stars_today: int, total_stars: int) -> go.Figure:
     """创建star趋势图"""
     import random
     
-    # 生成近30天的模拟数据
     dates = []
     stars = []
     current_date = datetime.now()
-    
-    # 基于今日增长估算历史趋势
-    base_growth = max(stars_today // 3, 10)  # 平均每日增长
+    base_growth = max(stars_today // 3, 10)
     
     for i in range(30, 0, -1):
         date = current_date - timedelta(days=i)
         dates.append(date.strftime("%m-%d"))
-        # 添加随机波动
         growth = base_growth + random.randint(-base_growth//2, base_growth)
         stars.append(max(total_stars - growth * i, 100))
     
-    # 创建趋势图
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=dates,
-        y=stars,
-        mode='lines+markers',
-        name='Stars',
+        x=dates, y=stars, mode='lines+markers', name='Stars',
         line=dict(color='#FF6B6B', width=2),
-        marker=dict(size=4),
-        fill='tozeroy',
+        marker=dict(size=4), fill='tozeroy',
         fillcolor='rgba(255, 107, 107, 0.1)'
     ))
     
     fig.update_layout(
         title=dict(text="近30天Star趋势", font=dict(size=12)),
-        xaxis_title="",
-        yaxis_title="",
-        height=150,
-        margin=dict(l=0, r=0, t=30, b=0),
-        showlegend=False,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis_title="", yaxis_title="", height=150,
+        margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(showgrid=False, tickangle=-45, tickfont=dict(size=8)),
         yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickfont=dict(size=8))
     )
     
     return fig
 
+def create_dimension_radar(dimensions: Dict) -> go.Figure:
+    """创建五维度雷达图"""
+    categories = ["技术相关性", "业务匹配", "产业链", "市场情绪", "技术壁垒"]
+    values = [
+        dimensions.get("tech_relevance", 0),
+        dimensions.get("business_match", 0),
+        dimensions.get("industry_chain", 0),
+        dimensions.get("market_sentiment", 0),
+        dimensions.get("tech_barrier", 0)
+    ]
+    values.append(values[0])  # 闭合
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=categories + [categories[0]],
+        fill='toself',
+        fillcolor='rgba(255, 107, 107, 0.2)',
+        line=dict(color='#FF6B6B', width=2),
+        name='五维度评分'
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True, range=[0, 1],
+                tickfont=dict(size=8)
+            )
+        ),
+        showlegend=False,
+        height=180,
+        margin=dict(l=20, r=20, t=20, b=20)
+    )
+    
+    return fig
+
+# ============ UI展示组件 ============
+def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict):
+    """增强版概念股展示"""
+    stock_name = stock_info["stock_name"]
+    stock_code = stock_info["stock_code"]
+    confidence = stock_info.get("confidence", "low")
+    
+    # 置信度图标和颜色
+    confidence_config = {
+        "high": {"icon": "🟢", "color": "#22c55e", "label": "高置信"},
+        "medium": {"icon": "🟡", "color": "#eab308", "label": "中置信"},
+        "low": {"icon": "🔴", "color": "#ef4444", "label": "低置信"}
+    }
+    conf = confidence_config.get(confidence, confidence_config["low"])
+    
+    with st.container():
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.markdown(f"**{conf['icon']} {stock_name}** `{stock_code}`")
+            
+            # 五维度评分进度条
+            dimensions = stock_info.get("dimensions", {})
+            
+            dim_labels = {
+                "tech_relevance": "技术相关性",
+                "business_match": "业务匹配",
+                "industry_chain": "产业链",
+                "market_sentiment": "市场情绪",
+                "tech_barrier": "技术壁垒"
+            }
+            
+            for dim_key, dim_label in dim_labels.items():
+                value = dimensions.get(dim_key, 0)
+                progress = int(value * 100)
+                
+                # 进度条
+                progress_bar = f"""
+                <div style="display: flex; align-items: center; margin: 2px 0;">
+                    <span style="width: 70px; font-size: 11px;">{dim_label}</span>
+                    <div style="flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; margin: 0 8px;">
+                        <div style="width: {progress}%; height: 100%; background: {conf['color']}; border-radius: 3px;"></div>
+                    </div>
+                    <span style="width: 35px; font-size: 11px; text-align: right;">{progress}%</span>
+                </div>
+                """
+                st.markdown(progress_bar, unsafe_allow_html=True)
+            
+            # 综合评分
+            score = stock_info.get("score", 0)
+            st.caption(f"📊 综合评分: **{score:.2f}** | 验证次数: {stock_info.get('verified_count', 0)}")
+            
+            # 推荐理由
+            reasons = stock_info.get("reasons", [])
+            if reasons:
+                with st.expander("📋 推荐理由", expanded=False):
+                    for reason in reasons[:3]:
+                        st.markdown(f"- {reason}")
+        
+        with col2:
+            # 实时股价
+            if stock_code and stock_code in stock_data_map:
+                data = stock_data_map[stock_code]
+                st.metric(
+                    f"¥{data['price']:.2f}",
+                    f"{data['change_percent']:+.2f}%",
+                    delta_color="normal"
+                )
+            else:
+                st.write("-")
+            
+            # 反馈按钮
+            st.button("👍 采纳", key=f"adopt_{stock_code}")
+            st.button("👎 忽略", key=f"ignore_{stock_code}")
+        
+        st.markdown("---")
+
 def display_stock_with_realtime_data(stock_info: Dict, stock_data_map: Dict):
-    """显示股票信息（含实时数据）"""
-    stock_name = stock_info["name"]
-    stock_code = stock_info["code"]
+    """显示股票信息（含实时数据）- 兼容旧版"""
+    stock_name = stock_info.get("name", stock_info.get("stock_name", ""))
+    stock_code = stock_info.get("code", stock_info.get("stock_code", ""))
     
     col1, col2, col3 = st.columns([2, 1, 1])
     
     with col1:
-        # 股票名称和强度
-        strength_icon = stock_info["strength_icon"]
+        strength_icon = stock_info.get("strength_icon", "🔴")
         st.markdown(f"**{strength_icon} {stock_name}**")
-        st.caption(f"相关性评分: {stock_info['score']}")
+        st.caption(f"相关性评分: {stock_info.get('score', 0)}")
     
     with col2:
-        # 实时股价（如果有）
         if stock_code and stock_code in stock_data_map:
             data = stock_data_map[stock_code]
             change_color = "green" if data["change_percent"] >= 0 else "red"
@@ -735,11 +1180,10 @@ def display_stock_with_realtime_data(stock_info: Dict, stock_data_map: Dict):
             st.write("-")
     
     with col3:
-        # 理由（只显示第一个）
-        if stock_info["reasons"]:
+        if stock_info.get("reasons"):
             st.caption(stock_info["reasons"][0])
 
-# 主界面
+# ============ 主界面 ============
 st.title("🔥 GitHub Trending Scout")
 st.markdown("**自动挖掘GitHub热门项目，智能识别技术趋势与投资机会**")
 
@@ -757,7 +1201,7 @@ with st.sidebar:
         "自然语言",
         ["all", "chinese", "english", "japanese", "korean"],
         index=0,
-        help="按项目描述的自然语言筛选（基于检测算法）"
+        help="按项目描述的自然语言筛选"
     )
     
     since = st.selectbox(
@@ -778,26 +1222,42 @@ with st.sidebar:
         index=0
     )
     
+    # 显示模式
+    display_mode = st.radio(
+        "分析模式",
+        ["增强版(产业链)", "经典版"],
+        index=0,
+        help="增强版展示五维度评分和产业链分析"
+    )
+    
     # 股票数据显示开关
-    show_stock_data = st.checkbox("显示股票实时数据", value=True, help="开启后会获取股票实时价格（可能增加加载时间）")
+    show_stock_data = st.checkbox("显示股票实时数据", value=True)
     
     st.markdown("---")
     st.markdown("### 📊 功能说明")
     st.markdown("""
     - 🔍 **热门项目发现**：实时获取GitHub Trending
     - 📈 **趋势信号分析**：P0/P1/P2分级
-    - 💰 **概念股映射**：多维度智能映射（语言+领域+技术栈）
-    - 📊 **相关性强度**：🔴强相关 🟡中相关 🟢弱相关
+    - 💰 **概念股映射**：产业链知识图谱+五维度评分
+    - 🎯 **置信度标签**：🟢高/🟡中/🔴低
+    - 📊 **五维度评分**：技术/业务/产业链/情绪/壁垒
     - 💹 **股票实时数据**：股价、涨跌幅实时更新
     - 🚀 **部署评估**：快速判断上手难度
     - 📊 **Star趋势图**：近30天增长可视化
-    - 🌍 **自然语言筛选**：中文/英文/日文/韩文
+    """)
+    
+    st.markdown("---")
+    st.markdown("### 🏭 产业链覆盖")
+    st.markdown("""
+    - **AI**: 训练端/推理端/数据端/框架端
+    - **云计算**: 基础设施/平台层/应用层
+    - **金融**: 交易系统/风控/支付结算
+    - **游戏**: 游戏引擎/服务/AI
     """)
     
     st.markdown("---")
     st.markdown("Made with ❤️ by [Autolo](https://github.com/autolo)")
 
-# 计算时间周期
 def get_time_range(since: str) -> str:
     """获取具体的时间周期"""
     today = datetime.now()
@@ -806,11 +1266,11 @@ def get_time_range(since: str) -> str:
     elif since == "weekly":
         week_ago = today - timedelta(days=7)
         return f"{week_ago.strftime('%Y.%m.%d')}-{today.strftime('%Y.%m.%d')}"
-    else:  # monthly
+    else:
         month_ago = today - timedelta(days=30)
         return f"{month_ago.strftime('%Y.%m.%d')}-{today.strftime('%Y.%m.%d')}"
 
-# 主内容区 - 时间范围指标（移到顶部）
+# 主内容区
 col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
 with col_stats1:
     time_map = {"daily": "今日", "weekly": "本周", "monthly": "本月"}
@@ -833,7 +1293,6 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
         projects = fetch_github_trending(language, since, limit)
         
         if projects:
-            # 应用自然语言筛选
             projects = filter_by_natural_language(projects, natural_language)
             
             if not projects:
@@ -841,7 +1300,7 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
             else:
                 st.success(f"✅ 获取到 {len(projects)} 个热门项目（{time_map.get(since, since)}）")
             
-            # 统计信息（移到项目列表之前 - 置顶）
+            # 统计信息
             st.markdown("### 📊 数据统计")
             col1, col2, col3, col4, col5 = st.columns(5)
             
@@ -876,8 +1335,8 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                 concept_analysis_results.append(analysis)
                 
                 for stock_info in analysis["stocks"]:
-                    if stock_info["code"]:
-                        all_stock_codes.add(stock_info["code"])
+                    if stock_info["stock_code"]:
+                        all_stock_codes.add(stock_info["stock_code"])
             
             # 批量获取股票实时数据
             stock_data_map = {}
@@ -893,9 +1352,9 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                     difficulty = assess_difficulty(repo)
                     analysis = concept_analysis_results[i-1]
                     
-                    # 取第一个概念股
-                    top_stock = analysis["stocks"][0] if analysis["stocks"] else {"name": "-", "strength_icon": ""}
+                    top_stock = analysis["stocks"][0] if analysis["stocks"] else {"stock_name": "-", "confidence": "low"}
                     
+                    confidence_icon = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(top_stock.get("confidence", "low"), "🔴")
                     stars_today = repo.get("stars_today", 0)
                     stars_today_str = f"+{stars_today}" if stars_today > 0 else "-"
                     
@@ -906,8 +1365,9 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                         "总Stars": f"{repo['stargazers_count']:,}",
                         "今日增长": stars_today_str,
                         "趋势": trend["level"],
-                        "概念股": f"{top_stock['strength_icon']} {top_stock['name']}",
-                        "相关性": top_stock.get("score", 0)
+                        "概念股": f"{confidence_icon} {top_stock.get('stock_name', '-')}",
+                        "评分": f"{top_stock.get('score', 0):.2f}",
+                        "置信度": top_stock.get('confidence', 'low').upper()
                     })
                 
                 st.dataframe(
@@ -924,7 +1384,6 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                     analysis = concept_analysis_results[i-1]
                     
                     with st.container():
-                        # 项目标题行
                         col1, col2, col3 = st.columns([3, 1, 1])
                         
                         with col1:
@@ -938,14 +1397,26 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                         with col3:
                             st.metric("部署难度", difficulty["stars"])
                         
-                        # 概念股映射（增强显示）
+                        # 概念股映射
                         if analysis["stocks"]:
-                            st.markdown("#### 💰 概念股映射")
+                            st.markdown("#### 💰 概念股映射 (v4.0 产业链分析)")
                             
-                            for j, stock_info in enumerate(analysis["stocks"][:3]):  # 显示前3个
-                                display_stock_with_realtime_data(stock_info, stock_data_map)
+                            if display_mode == "增强版(产业链)":
+                                # 增强版展示
+                                for stock_info in analysis["stocks"][:3]:
+                                    render_concept_stocks_enhanced(stock_info, stock_data_map)
+                            else:
+                                # 经典版展示
+                                for stock_info in analysis["stocks"][:3]:
+                                    display_stock_with_realtime_data(stock_info, stock_data_map)
                         
-                        # Star趋势图（新增）
+                        # 匹配的产业链
+                        if analysis.get("matched_chains"):
+                            with st.expander("🏭 匹配的产业链", expanded=False):
+                                for chain in analysis["matched_chains"]:
+                                    st.markdown(f"- **{chain['domain']}** → {chain['node']}")
+                        
+                        # Star趋势图
                         with st.expander("📈 查看Star趋势（近30天）", expanded=False):
                             fig = create_star_trend_chart(
                                 repo.get("stars_today", 0),
@@ -966,10 +1437,12 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                         
                         with col2:
                             if analysis["stocks"]:
-                                st.caption(f"分析维度: {', '.join(analysis['stocks'][0]['dimensions'][:2])}")
+                                reasons = analysis["stocks"][0].get("reasons", [])
+                                if reasons:
+                                    st.caption(f"推荐理由: {reasons[0][:50]}...")
                         
                         with col3:
-                            for signal in trend["signals"][:2]:  # 只显示前2个信号
+                            for signal in trend["signals"][:2]:
                                 st.markdown(signal)
                         
                         st.markdown("---")
@@ -982,7 +1455,24 @@ st.markdown("""
 <div style='text-align: center; color: #94A3B8;'>
     💡 <b>提示</b>：点击项目名称可跳转到GitHub页面 | 
     数据来源：GitHub Trending API | 
-    概念股映射基于多维度分析，仅供参考，不构成投资建议 |
+    概念股映射基于产业链知识图谱+五维度评分，仅供参考，不构成投资建议 |
     股票数据来自新浪财经（实时更新）
 </div>
 """, unsafe_allow_html=True)
+
+# ============ 数据库初始化 ============
+@st.cache_data
+def check_db_init():
+    """检查并初始化数据库"""
+    if not os.path.exists(DB_PATH):
+        with st.spinner("首次运行，正在初始化产业链知识图谱..."):
+            import subprocess
+            try:
+                subprocess.run(["python", os.path.join(APP_DIR, "data", "init_database.py")], 
+                             check=True, capture_output=True)
+                st.success("✅ 产业链知识图谱初始化完成")
+            except:
+                pass
+    return True
+
+check_db_init()
