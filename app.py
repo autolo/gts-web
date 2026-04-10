@@ -1453,7 +1453,7 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
     
     # 详细信息折叠（点击查看）
     with st.expander("📊 查看详情", expanded=False):
-        # 五维度评分（简化为一行显示）
+        # 五维度评分（雷达图）
         dimensions = stock_info.get("dimensions", {})
         dim_labels = {
             "tech_relevance": "技术",
@@ -1463,13 +1463,32 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_
             "tech_barrier": "壁垒"
         }
         
-        # 横向显示五维度
-        dim_cols = st.columns(5)
-        for idx, (dim_key, dim_label) in enumerate(dim_labels.items()):
-            value = dimensions.get(dim_key, 0)
-            progress = int(value * 100)
-            with dim_cols[idx]:
-                st.metric(dim_label, f"{progress}%")
+        # 创建雷达图
+        categories = list(dim_labels.values())
+        values = [dimensions.get(k, 0) for k in dim_labels.keys()]
+        
+        fig = go.Figure(data=go.Scatterpolar(
+            r=values + [values[0]],  # 闭合图形
+            theta=categories + [categories[0]],
+            fill='toself',
+            fillcolor='rgba(0, 113, 227, 0.2)',
+            line=dict(color='#0071E3', width=2),
+            name='评分'
+        ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1]
+                )
+            ),
+            showlegend=False,
+            height=200,
+            margin=dict(l=20, r=20, t=20, b=20)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
         
         # 推荐理由
         reasons = stock_info.get("reasons", [])
@@ -1546,13 +1565,24 @@ with st.sidebar:
         index=0
     )
     
+    # 显示模式说明
+    if view_mode == "卡片视图":
+        st.caption("📋 详细信息展示，适合深度分析单个项目（含概念股雷达图）")
+    else:
+        st.caption("📊 快速浏览对比，适合筛选多个项目（紧凑表格）")
+    
     # 分析模式
     display_mode = st.radio(
         "分析模式",
         ["增强版(产业链)", "经典版"],
-        index=0,
-        help="增强版展示五维度评分和产业链分析"
+        index=0
     )
+    
+    # 分析模式说明
+    if display_mode == "增强版(产业链)":
+        st.caption("🔬 产业链知识图谱 + 五维度评分 + 置信度标签（推荐）")
+    else:
+        st.caption("⚡ 简单相关性评分，快速浏览概念股映射")
     
     # 股票数据显示开关
     show_stock_data = st.checkbox("显示股票实时数据", value=True)
@@ -1705,49 +1735,35 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                     hide_index=True
                 )
             
-            # 卡片视图（Apple风格优化）
+            # 卡片视图
             else:
                 for i, repo in enumerate(projects, 1):
                     trend = analyze_trend_signal(repo)
                     difficulty = assess_difficulty(repo)
                     analysis = concept_analysis_results[i-1]
                     
-                    # 项目卡片包装
-                    st.markdown('<div class="project-card">', unsafe_allow_html=True)
+                    # 项目标题
+                    st.markdown(f"### {i}. [{repo['full_name']}]({repo['html_url']})")
+                    st.caption(repo.get('description', '暂无描述')[:150])
                     
-                    # 标题区域（带左边框强调）
-                    col_title, col_trend, col_difficulty = st.columns([4, 1, 1])
-                    
-                    with col_title:
-                        st.markdown(f"### {i}. [{repo['full_name']}]({repo['html_url']})")
-                        st.markdown(f"<span class='project-description'>{repo.get('description', '暂无描述')[:150]}...</span>", unsafe_allow_html=True)
-                    
-                    with col_trend:
-                        stars_today = repo.get("stars_today", 0)
-                        st.metric("📈 趋势", trend["level"], f"+{stars_today} ⭐")
-                    
-                    with col_difficulty:
-                        st.metric("🚀 难度", difficulty["stars"])
-                    
-                    # 项目元信息栏
-                    meta_cols = st.columns([2, 2, 2, 2, 2])
-                    with meta_cols[0]:
+                    # 核心信息（一行展示）
+                    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
+                    with col1:
+                        st.metric("⭐ Stars", f"{repo['stargazers_count']:,}")
+                    with col2:
+                        st.metric("📈 今日增长", f"+{repo.get('stars_today', 0):,}")
+                    with col3:
+                        trend_colors = {"P0": "🔴", "P1": "🟠", "P2": "🔵", "P3": "⚪"}
+                        st.metric("🎯 趋势", f"{trend_colors.get(trend['level'], '⚪')} {trend['level']}")
+                    with col4:
                         if repo.get('language'):
                             st.metric("🖥️ 语言", repo['language'][:8])
-                    with meta_cols[1]:
-                        st.metric("⭐ Stars", f"{repo['stargazers_count']:,}")
-                    with meta_cols[2]:
-                        st.metric("🍴 Forks", f"{repo['forks_count']:,}")
-                    with meta_cols[3]:
-                        st.metric("📈 今日+", f"+{repo.get('stars_today', 0):,}")
-                    with meta_cols[4]:
-                        # 趋势信号标签
-                        trend_colors = {"P0": "🔴", "P1": "🟠", "P2": "🔵", "P3": "⚪"}
-                        st.metric("🎯 信号", f"{trend_colors.get(trend['level'], '⚪')} {trend['level']}")
+                    with col5:
+                        st.metric("🚀 难度", difficulty["stars"])
                     
-                    # 概念股映射（使用expander优化）
+                    # 概念股映射
                     if analysis["stocks"]:
-                        st.markdown("#### 💰 概念股映射 (v4.0 产业链分析)")
+                        st.markdown("#### 💰 概念股映射")
                         
                         if display_mode == "增强版(产业链)":
                             # 增强版展示
@@ -1772,13 +1788,8 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     
-                    # 推荐理由摘要
-                    if analysis["stocks"] and analysis["stocks"][0].get("reasons"):
-                        reasons = analysis["stocks"][0].get("reasons", [])
-                        st.caption(f"💡 推荐理由: {reasons[0][:80]}...")
-                    
-                    # 项目卡片结束
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    # 项目分隔
+                    st.divider()
         else:
             st.error("获取数据失败，请稍后重试")
 
