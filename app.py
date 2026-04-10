@@ -1079,11 +1079,14 @@ def create_dimension_radar(dimensions: Dict) -> go.Figure:
     return fig
 
 # ============ UI展示组件 ============
-def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict):
+def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict, repo_name: str = ""):
     """增强版概念股展示"""
     stock_name = stock_info["stock_name"]
     stock_code = stock_info["stock_code"]
     confidence = stock_info.get("confidence", "low")
+    
+    # 使用repo_name+stock_code作为唯一key，避免重复
+    unique_key = f"{repo_name}_{stock_code}" if repo_name else stock_code
     
     # 置信度图标和颜色
     confidence_config = {
@@ -1150,8 +1153,8 @@ def render_concept_stocks_enhanced(stock_info: Dict, stock_data_map: Dict):
                 st.write("-")
             
             # 反馈按钮
-            st.button("👍 采纳", key=f"adopt_{stock_code}")
-            st.button("👎 忽略", key=f"ignore_{stock_code}")
+            st.button("👍 采纳", key=f"adopt_{unique_key}")
+            st.button("👎 忽略", key=f"ignore_{unique_key}")
         
         st.markdown("---")
 
@@ -1404,7 +1407,7 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                             if display_mode == "增强版(产业链)":
                                 # 增强版展示
                                 for stock_info in analysis["stocks"][:3]:
-                                    render_concept_stocks_enhanced(stock_info, stock_data_map)
+                                    render_concept_stocks_enhanced(stock_info, stock_data_map, repo['full_name'])
                             else:
                                 # 经典版展示
                                 for stock_info in analysis["stocks"][:3]:
