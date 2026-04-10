@@ -1761,6 +1761,20 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                     with col5:
                         st.metric("🚀 难度", difficulty["stars"])
                     
+                    # Star趋势图（折叠展示）
+                    with st.expander("📈 查看Star趋势（近30天）", expanded=False):
+                        fig = create_star_trend_chart(
+                            repo.get("stars_today", 0),
+                            repo.get("stargazers_count", 0)
+                        )
+                        st.plotly_chart(fig, use_container_width=True, key=f"star_trend_{repo['full_name']}")
+                    
+                    # 匹配的产业链（折叠展示）
+                    if analysis.get("matched_chains"):
+                        with st.expander("🏭 匹配的产业链", expanded=False):
+                            for chain in analysis["matched_chains"]:
+                                st.markdown(f"- **{chain['domain']}** → {chain['node']}")
+                    
                     # 概念股映射
                     if analysis["stocks"]:
                         st.markdown("#### 💰 概念股映射")
@@ -1773,20 +1787,6 @@ if st.button("🚀 获取热门项目", type="primary", use_container_width=True
                             # 经典版展示
                             for stock_info in analysis["stocks"][:3]:
                                 display_stock_with_realtime_data(stock_info, stock_data_map)
-                    
-                    # 匹配的产业链（折叠展示）
-                    if analysis.get("matched_chains"):
-                        with st.expander("🏭 匹配的产业链", expanded=False):
-                            for chain in analysis["matched_chains"]:
-                                st.markdown(f"- **{chain['domain']}** → {chain['node']}")
-                    
-                    # Star趋势图（折叠展示）
-                    with st.expander("📈 查看Star趋势（近30天）", expanded=False):
-                        fig = create_star_trend_chart(
-                            repo.get("stars_today", 0),
-                            repo.get("stargazers_count", 0)
-                        )
-                        st.plotly_chart(fig, use_container_width=True, key=f"star_trend_{repo['full_name']}")
                     
                     # 项目分隔
                     st.divider()
