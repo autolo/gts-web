@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import time
 from typing import Dict, List, Optional
+import re
 
 # 页面配置
 st.set_page_config(
@@ -18,14 +19,10 @@ st.set_page_config(
 def fetch_github_trending(language: str, since: str, limit: int) -> List[Dict]:
     """获取GitHub热门项目 - 使用第三方Trending API"""
     try:
-        # 方法1: 使用第三方 GitHub Trending API
-        # API文档: https://github.com/huchenme/github-trending-api
+        # 使用可靠的第三方API: https://githubtrending.lessx.xyz
+        base_url = "https://githubtrending.lessx.xyz/trending"
         
-        base_url = "https://github-trending-api.now.sh/repositories"
-        
-        params = {
-            "limit": min(limit, 25)  # API限制最多25条
-        }
+        params = {}
         
         if language != "all":
             params["language"] = language
@@ -47,59 +44,29 @@ def fetch_github_trending(language: str, since: str, limit: int) -> List[Dict]:
             # 标准化数据格式
             normalized = []
             for repo in data[:limit]:
-                normalized.append({
-                    "full_name": repo.get("author", "") + "/" + repo.get("name", ""),
-                    "html_url": "https://github.com/" + repo.get("author", "") + "/" + repo.get("name", ""),
-                    "description": repo.get("description", ""),
-                    "language": repo.get("language", ""),
-                    "stargazers_count": repo.get("stars", 0),
-                    "forks_count": repo.get("forks", 0),
-                    "open_issues_count": repo.get("currentPeriodStars", 0),  # 用当前周期stars代替
-                    "stars_today": repo.get("starsSince", repo.get("currentPeriodStars", 0)),
-                    "updated_at": datetime.now().isoformat()
-                })
-            return normalized
-        
-        return []
-        
-    except Exception as e:
-        st.warning(f"主要API调用失败，尝试备用方案: {str(e)}")
-        return fetch_from_backup_api(language, since, limit)
-
-@st.cache_data(ttl=300)
-def fetch_from_backup_api(language: str, since: str, limit: int) -> List[Dict]:
-    """备用API - 使用另一个数据源"""
-    try:
-        # 备用API: https://api.oioweb.cn/api/github/trending
-        base_url = "https://api.oioweb.cn/api/github/trending"
-        
-        params = {}
-        if language != "all":
-            params["language"] = language
-        if since in ["daily", "weekly", "monthly"]:
-            params["since"] = since
-        
-        response = requests.get(base_url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get("code") == 200 and "result" in data:
-            normalized = []
-            for repo in data["result"][:limit]:
-                # 解析项目名（格式：author/name）
-                name_parts = repo.get("repository", "").split("/")
-                author = name_parts[0] if len(name_parts) > 0 else ""
-                name = name_parts[1] if len(name_parts) > 1 else ""
+                # 解析"361 stars today"格式
+                increased_text = repo.get("increased", "")
+                stars_today = parse_stars_today(increased_text)
+                
+                # 解析项目名
+                name = repo.get("name", "")
+                if "/" in name:
+                    parts = name.split("/")
+                    author = parts[0]
+                    repo_name = parts[1]
+                else:
+                    author = repo.get("repository", "").split("/")[-2] if repo.get("repository") else ""
+                    repo_name = name
                 
                 normalized.append({
-                    "full_name": f"{author}/{name}",
-                    "html_url": repo.get("url", f"https://github.com/{author}/{name}"),
+                    "full_name": name,
+                    "html_url": repo.get("repository", f"https://github.com/{name}"),
                     "description": repo.get("description", ""),
                     "language": repo.get("language", ""),
-                    "stargazers_count": repo.get("stars", 0),
-                    "forks_count": repo.get("forks", 0),
+                    "stargazers_count": int(repo.get("stars", 0)) if repo.get("stars") else 0,
+                    "forks_count": int(repo.get("forks", 0)) if repo.get("forks") else 0,
                     "open_issues_count": 0,
-                    "stars_today": repo.get("starsSince", 0),
+                    "stars_today": stars_today,
                     "updated_at": datetime.now().isoformat()
                 })
             return normalized
@@ -107,8 +74,19 @@ def fetch_from_backup_api(language: str, since: str, limit: int) -> List[Dict]:
         return []
         
     except Exception as e:
-        st.warning(f"备用API也失败，使用本地缓存数据")
+        st.warning(f"主要API调用失败: {str(e)}，尝试备用方案...")
         return get_fallback_data(language, limit)
+
+def parse_stars_today(text: str) -> int:
+    """解析'361 stars today'格式"""
+    if not text:
+        return 0
+    
+    # 匹配数字
+    match = re.search(r'(\d+)', text.replace(",", ""))
+    if match:
+        return int(match.group(1))
+    return 0
 
 def get_fallback_data(language: str, limit: int) -> List[Dict]:
     """最终备用：本地数据"""
